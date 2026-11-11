@@ -110,6 +110,25 @@ chroot_calls() {
     [ -n "$(calls iwctl)" ]
 }
 
+@test "no wired network and no Wi-Fi device stops with a hint instead of looping" {
+    not_wired
+    rm -rf "$SYS_CLASS_NET/wlan0"
+    run "$INSTALL" < /dev/null
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"no Wi-Fi device"*"cable"* ]]
+    [ -z "$(calls iwctl)" ]
+    [ -z "$(calls archinstall)" ]
+}
+
+@test "a wired link that never gets online and no Wi-Fi device stops too" {
+    rm -f "$FAKE_DIR/online"
+    rm -rf "$SYS_CLASS_NET/wlan0"
+    run "$INSTALL" < /dev/null
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"no Wi-Fi device"* ]]
+    [ -z "$(calls iwctl)" ]
+}
+
 @test "runs archinstall with the saved config, never silently" {
     run "$INSTALL" < /dev/null
     [ "$status" -eq 0 ]

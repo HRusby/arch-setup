@@ -352,3 +352,10 @@ uwsm start hyprland.desktop" ]
     [ "$(grep -c . <<< "$calls")" -eq 2 ]
     [ -z "$(grep -v '^sudo snapper --no-dbus ' <<< "$calls" || true)" ]
 }
+
+@test "the power key is left to Hyprland's power menu, not logind" {
+    run "$INSTALL" < /dev/null
+    [ "$status" -eq 0 ]
+    [ "$(cat "$FAKE_DIR/root/etc/systemd/logind.conf.d/10-power-key.conf")" = "[Login]
+HandlePowerKey=ignore" ]
+}

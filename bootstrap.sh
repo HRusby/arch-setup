@@ -98,7 +98,8 @@ if need_paru; then
     build_paru
     command -v paru > /dev/null || die "paru is still missing after building paru-bin"
 fi
-(( ${#aur_pkgs[@]} )) && paru -S --needed --noconfirm "${aur_pkgs[@]}"
+# --skipreview: --noconfirm alone can still open the PKGBUILD review pager.
+(( ${#aur_pkgs[@]} )) && paru -S --needed --noconfirm --skipreview "${aur_pkgs[@]}"
 
 for m in "${modules[@]}"; do
     [[ -x $REPO/$m/install.sh ]] && "$REPO/$m/install.sh"

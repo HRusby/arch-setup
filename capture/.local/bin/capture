@@ -38,15 +38,15 @@ screenshot() {
     satty_args=(--filename - --output-filename "$SHOT_DIR/%Y-%m-%d_%H-%M-%S.png"
         --copy-command wl-copy --early-exit)
     [[ -f $SATTY_CONFIG ]] && satty_args=(--config "$SATTY_CONFIG" "${satty_args[@]}")
-    # A cancelled selection makes grimblast fail with no image: that is not an
-    # error, so leave quietly instead of handing satty an empty stream.
-    local statuses
-    set +e
-    grimblast save "$area" - | satty "${satty_args[@]}"
-    statuses=("${PIPESTATUS[@]}")
-    set -e
-    ((statuses[0] == 0)) || exit 0
-    rc=${statuses[1]}
+    # Capture to a file first: a cancelled selection makes grimblast fail with
+    # no image, which is not an error, so leave quietly without starting satty.
+    # Any other failed or empty capture also never reaches satty.
+    shot=$(mktemp)
+    trap 'rm -f "$shot"' EXIT
+    grimblast save "$area" - > "$shot" || exit 0
+    [[ -s $shot ]] || exit 0
+    rc=0
+    satty "${satty_args[@]}" < "$shot" || rc=$?
     exit "$rc"
 }
 

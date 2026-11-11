@@ -231,6 +231,17 @@ case("autostart launches the session via uwsm-app", function()
   end
 end)
 
+case("autostart re-applies the dark colour scheme in the session", function()
+  local rec = stub.load_config(NO_COLORS)
+  stub.fire(rec, "hyprland.start")
+  local ran = {}
+  for _, call in ipairs(rec.exec_cmd) do
+    ran[call[1]] = true
+  end
+  -- gsettings from bootstrap (in the chroot) hits the memory backend and is lost.
+  check(ran["gsettings set org.gnome.desktop.interface color-scheme prefer-dark"], "colour scheme not set")
+end)
+
 -- Run one named case, or all of them.
 local selected = arg[1] and { arg[1] } or order
 local failures = 0

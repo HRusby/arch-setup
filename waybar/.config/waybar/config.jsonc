@@ -11,7 +11,7 @@
   "custom/menu": {
     "format": "",
     "tooltip": false,
-    "on-click": "menu"
+    "on-click": "uwsm-app -- menu"
   },
 
   "hyprland/workspaces": {
@@ -33,7 +33,7 @@
     "return-type": "json",
     "signal": 8,
     "interval": 30,
-    "on-click": "waybar-indicators click"
+    "on-click": "uwsm-app -- waybar-indicators click"
   },
 
   "tray": { "icon-size": 16, "spacing": 8 },
@@ -46,7 +46,7 @@
     "tooltip-format": "{status}",
     "tooltip-format-connected": "{device_enumerate}",
     "tooltip-format-enumerate-connected": "{device_alias}",
-    "on-click": "foot -e bluetui"
+    "on-click": "uwsm-app -- foot -e bluetui"
   },
 
   "network": {
@@ -56,7 +56,7 @@
     "tooltip-format-wifi": "{essid} ({signalStrength}%)",
     "tooltip-format-ethernet": "{ifname}",
     "tooltip-format-disconnected": "Disconnected",
-    "on-click": "nm-menu"
+    "on-click": "uwsm-app -- nm-menu"
   },
 
   "pulseaudio": {
@@ -64,19 +64,19 @@
     "format-muted": "",
     "format-icons": { "default": ["", "", ""] },
     "scroll-step": 5,
-    "on-click": "foot -e wiremix"
+    "on-click": "uwsm-app -- foot -e wiremix"
   },
 
   "cpu": {
     "format": " {usage}%",
     "interval": 5,
-    "on-click": "foot -e btop"
+    "on-click": "uwsm-app -- foot -e btop"
   },
 
   "memory": {
     "format": " {percentage}%",
     "interval": 10,
-    "on-click": "foot -e btop"
+    "on-click": "uwsm-app -- foot -e btop"
   },
 
   "custom/weather": {

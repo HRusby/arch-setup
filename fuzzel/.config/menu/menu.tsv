@@ -6,7 +6,7 @@
 /	Keybinds	keybinds
 /	Reminder	@reminder
 /	Network	nm-menu
-/	Update	foot -e sysupdate
+/	Update	foot --hold -e sysupdate
 /	Power	@power
 /capture	Screenshot region	capture screenshot region
 /capture	Screenshot window	capture screenshot window

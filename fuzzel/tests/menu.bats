@@ -52,6 +52,15 @@ setup() {
     [ "$(calls uwsm-app)" = "uwsm-app -- theme-set gruvbox" ]
 }
 
+@test "a theme name with a space reaches theme-set as one argument" {
+    fake theme-set --no-log <<< '[[ $1 == --list ]] && echo "solar ized"'
+    fake uwsm-app --no-log <<< '{ printf "uwsm-app"; printf " [%s]" "$@"; echo; } >> "$CALLS"'
+    picks "solar ized"
+    run "$MENU" theme
+    [ "$status" -eq 0 ]
+    [ "$(calls uwsm-app)" = "uwsm-app [--] [theme-set] [solar ized]" ]
+}
+
 @test "power submenu has Lock, Suspend, Logout, Reboot, Shutdown" {
     run "$MENU" power
     [ "$(shown 1)" = $'Lock\nSuspend\nLogout\nReboot\nShutdown' ]
@@ -64,10 +73,10 @@ setup() {
     done <<< $'Lock|loginctl lock-session\nSuspend|systemctl suspend\nLogout|uwsm stop\nReboot|systemctl reboot\nShutdown|systemctl poweroff'
 }
 
-@test "Update opens a terminal running sysupdate" {
+@test "Update opens a terminal running sysupdate that stays open for the report" {
     picks Update
     run "$MENU"
-    [ "$(calls uwsm-app)" = "uwsm-app -- foot -e sysupdate" ]
+    [ "$(calls uwsm-app)" = "uwsm-app -- foot --hold -e sysupdate" ]
 }
 
 @test "apps runs fuzzel in app mode" {

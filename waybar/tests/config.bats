@@ -22,3 +22,15 @@ strip_comments() { sed -E 's@^[[:space:]]*//.*$@@' "$1"; }
     css="$REPO_ROOT/waybar/.config/waybar/style.css"
     grep -q '^@import url("../theme/generated/colors.css");' "$css"
 }
+
+@test "on-click commands launch through uwsm-app, like the binds" {
+    cfg=$(strip_comments "$REPO_ROOT/waybar/.config/waybar/config.jsonc")
+    clicks=$(jq -r '.[] | objects | ."on-click" // empty | select(. != "activate")' <<< "$cfg" | sort)
+    [ "$clicks" = "uwsm-app -- foot -e bluetui
+uwsm-app -- foot -e btop
+uwsm-app -- foot -e btop
+uwsm-app -- foot -e wiremix
+uwsm-app -- menu
+uwsm-app -- nm-menu
+uwsm-app -- waybar-indicators click" ] || { echo "$clicks"; false; }
+}

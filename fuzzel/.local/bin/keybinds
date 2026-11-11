@@ -12,9 +12,17 @@ def mods: [
     (select(has(4)) | "CTRL"),
     (select(has(8)) | "ALT")
 ];
+# code:NN binds have an empty key and only a keycode: 10..19 are 1..9 0,
+# 20 and 21 the minus and equal keys.
+def keyname:
+    if .key != "" then (if (.key | length) == 1 then (.key | ascii_upcase) else .key end)
+    elif .keycode >= 10 and .keycode <= 19 then ((.keycode - 9) % 10 | tostring)
+    elif .keycode == 20 then "minus"
+    elif .keycode == 21 then "equal"
+    else "code:\(.keycode)" end;
 .[]
 | select((.mouse | not) and (.key | startswith("switch:") or startswith("mouse") | not))
-| (mods + [if (.key | length) == 1 then (.key | ascii_upcase) else .key end] | join(" + "))
+| (mods + [keyname] | join(" + "))
   + "  " + (if .description == "" then "(no description)" else .description end)
 '
 

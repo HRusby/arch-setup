@@ -54,3 +54,7 @@ fixture() {
     run shellcheck -x "${files[@]}"
     [ "$status" -eq 0 ] || { echo "$output"; false; }
 }
+
+@test "README gives the full test suite command" {
+    grep -qF 'bats -r tests */tests' "$REPO_ROOT/README.md"
+}

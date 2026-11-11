@@ -42,9 +42,10 @@ Packages are installed in one `pacman` call and one `paru` call (building
 ## Tests
 
 ```
-bats tests/
+bats -r tests */tests
 ```
 
-Tests run in a sandboxed `$HOME` with fake `sudo`/`paru`; real-stow tests are
-skipped when `stow` is not installed. `tests/lint.bats` rejects colour literals
+`tests/` holds the bootstrap and repo-wide tests; each module's own tests live
+in `<module>/tests/`. Tests run in a sandboxed `$HOME` with fake `sudo`/`paru`;
+real-stow tests are skipped when `stow` is not installed. `tests/lint.bats` rejects colour literals
 outside `theme/.config/theme/palettes/` and runs shellcheck on scripts.

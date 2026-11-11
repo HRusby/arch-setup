@@ -6,13 +6,16 @@ setup() {
     # Only the fakes and the basic tools below are on PATH, so the real
     # grim/slurp/satty/gpu-screen-recorder/pkill/wl-copy can never run.
     mkdir -p "$FAKE_DIR/sys"
-    for c in bash env cat grep sed head tail chmod rm date mkdir tr cut sleep; do
+    for c in bash env cat grep sed head tail chmod rm date mkdir tr cut sleep mktemp ls; do
         ln -s "$(command -v "$c")" "$FAKE_DIR/sys/$c"
     done
     export PATH="$FAKE_DIR/bin:$FAKE_DIR/sys"
     export CLIP="$FAKE_DIR/clipboard"
-    fake grimblast < /dev/null
-    fake satty < /dev/null
+    export TMPDIR="$FAKE_DIR/tmp"
+    mkdir -p "$TMPDIR"
+    # grimblast "captures" an image to stdout; satty keeps what it was handed.
+    fake grimblast <<< 'echo PNGDATA'
+    fake satty <<< 'cat > "$FAKE_DIR/satty.in"'
     fake notify-send < /dev/null
     fake pkill < /dev/null
     fake gpu-screen-recorder < /dev/null
@@ -73,6 +76,37 @@ recorder_running() {
     [ "$status" -eq 0 ]
     [ -z "$output" ]
     [ -z "$(calls notify-send)" ]
+    [ -z "$(calls satty)" ]
+}
+
+@test "satty gets the captured image on stdin" {
+    run "$CAPTURE" screenshot region
+    [ "$status" -eq 0 ]
+    [ "$(cat "$FAKE_DIR/satty.in")" = PNGDATA ]
+}
+
+@test "a failed capture with partial output does not start satty" {
+    fake grimblast <<< 'echo partial; exit 2'
+    run "$CAPTURE" screenshot region
+    [ "$status" -eq 0 ]
+    [ -z "$(calls satty)" ]
+}
+
+@test "an empty capture does not start satty" {
+    fake grimblast < /dev/null
+    run "$CAPTURE" screenshot region
+    [ "$status" -eq 0 ]
+    [ -z "$output" ]
+    [ -z "$(calls satty)" ]
+}
+
+@test "the temporary capture is removed afterwards" {
+    run "$CAPTURE" screenshot region
+    [ "$status" -eq 0 ]
+    [ -z "$(ls -A "$TMPDIR")" ]
+    fake grimblast <<< 'exit 1'
+    run "$CAPTURE" screenshot region
+    [ -z "$(ls -A "$TMPDIR")" ]
 }
 
 @test "satty failure is reported" {

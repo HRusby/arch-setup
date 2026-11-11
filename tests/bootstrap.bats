@@ -13,7 +13,7 @@ load helpers
     printf '%s\n' "# aur" x y > "$REPO/m1/packages.aur.txt"
     run "$BOOTSTRAP" --modules m1
     [ "$status" -eq 0 ]
-    [ "$(calls paru)" = "paru -S --needed --noconfirm x y" ]
+    [ "$(calls paru)" = "paru -S --needed --noconfirm --skipreview x y" ]
     pacman_line=$(grep -n '^sudo pacman' "$CALLS" | cut -d: -f1)
     paru_line=$(grep -n '^paru' "$CALLS" | cut -d: -f1)
     [ "$pacman_line" -lt "$paru_line" ]

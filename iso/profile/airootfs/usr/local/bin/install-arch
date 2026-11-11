@@ -69,12 +69,13 @@ wait_online() {
     return 1
 }
 
+# wifi_device — the first wireless interface; fails when there is none.
 wifi_device() {
     local dev
     for dev in "$sys_class_net"/*/wireless; do
-        [[ -e $dev ]] && { basename "$(dirname "$dev")"; return; }
+        [[ -e $dev ]] && { basename "$(dirname "$dev")"; return 0; }
     done
-    echo wlan0
+    return 1
 }
 
 connect() {
@@ -83,7 +84,8 @@ connect() {
         return
     fi
     local wlan
-    wlan=$(wifi_device)
+    wlan=$(wifi_device) ||
+        die "no wired network and no Wi-Fi device found; plug in a network cable (check 'ip link'), then run install-arch again"
     until online; do
         say "No wired network. In iwctl: station $wlan scan, station $wlan connect <SSID>, then exit."
         iwctl || true

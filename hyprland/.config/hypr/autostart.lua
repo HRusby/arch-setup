@@ -16,4 +16,7 @@ hl.on("hyprland.start", function()
   for _, command in ipairs(services) do
     hl.exec_cmd("uwsm-app -- " .. command)
   end
+  -- theme-set runs gsettings during bootstrap, in a chroot where it only
+  -- reaches the memory backend; set the colour scheme again for real.
+  hl.exec_cmd("gsettings set org.gnome.desktop.interface color-scheme prefer-dark")
 end)

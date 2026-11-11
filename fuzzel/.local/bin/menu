@@ -59,7 +59,8 @@ show_table() {
 show_theme() {
     local choice
     choice=$(theme-set --list | pick "theme > ") || exit 0
-    run "theme-set $choice"
+    # Not through `run`: it word-splits, and a theme name may have spaces.
+    exec uwsm-app -- theme-set "$choice"
 }
 
 do_reminder() {

@@ -4,12 +4,12 @@ setup() {
     KEYBINDS="$REPO_ROOT/fuzzel/.local/bin/keybinds"
 }
 
-# bind <mouse> <modmask> <key> <description> — a bind in `hyprctl binds -j` shape.
+# bind <mouse> <modmask> <key> <description> [keycode] — a bind in `hyprctl binds -j` shape.
 bind() {
-    jq -n --argjson mouse "$1" --argjson mod "$2" --arg key "$3" --arg d "$4" '{
+    jq -n --argjson mouse "$1" --argjson mod "$2" --arg key "$3" --arg d "$4" --argjson code "${5:-0}" '{
         locked: false, mouse: $mouse, release: false, repeat: false, longPress: false,
         non_consuming: false, auto_consuming: false, has_description: ($d != ""),
-        modmask: $mod, submap: "", submap_universal: "false", key: $key, keycode: 0,
+        modmask: $mod, submap: "", submap_universal: "false", key: $key, keycode: $code,
         catch_all: false, description: $d, allow_input_capture: false,
         dispatcher: "__lua", arg: "1"}'
 }
@@ -67,4 +67,17 @@ XF86AudioMute  Mute' ]
     hypr_binds "$(bind false 64 K Keybindings)"
     run "$KEYBINDS"
     [ "$status" -eq 0 ]
+}
+
+@test "code: binds show the key they stand for" {
+    hypr_binds "$(bind false 64 '' 'Workspace 1' 10)" "$(bind false 64 '' 'Workspace 10' 19)" \
+        "$(bind false 64 '' 'Expand left' 20)" "$(bind false 64 '' 'Shrink left' 21)" \
+        "$(bind false 65 '' 'System menu' 201)"
+    run "$KEYBINDS"
+    [ "$status" -eq 0 ]
+    [ "$(shown 1)" = $'SUPER + 0  Workspace 10
+SUPER + 1  Workspace 1
+SUPER + SHIFT + code:201  System menu
+SUPER + equal  Shrink left
+SUPER + minus  Expand left' ]
 }

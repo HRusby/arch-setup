@@ -22,6 +22,7 @@ spec() {
 @test "monitors match spec" { spec; }
 @test "input uses the gb layout" { spec; }
 @test "autostart launches the session via uwsm-app" { spec; }
+@test "autostart re-applies the dark colour scheme in the session" { spec; }
 
 @test "every .lua file parses" {
     shopt -s globstar nullglob
