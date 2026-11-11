@@ -11,6 +11,10 @@ REC_DIR="$HOME/Videos/Recordings"
 SATTY_CONFIG="$HOME/.config/theme/generated/satty.toml"
 # Matches the recorder process itself, not other commands that merely
 # mention its name.
+# Polling for the recorder to appear/exit; overridable so tests stay fast.
+WAIT_STEP=${CAPTURE_WAIT_STEP:-0.1}
+START_TRIES=${CAPTURE_START_TRIES:-10}
+STOP_TRIES=${CAPTURE_STOP_TRIES:-50}
 RECORDER_RE='(^|/)gpu-screen-recorder( |$)'
 
 die() {
@@ -74,7 +78,18 @@ record_start() {
     gpu-screen-recorder "${target[@]}" -f 60 -a default_output -o "$out" \
         > /dev/null 2>&1 < /dev/null &
     disown
-    signal_waybar
+    # Tell waybar only once the recorder is really up; if it died at once
+    # (no audio device, bad region) say so instead of leaving no trace.
+    local i
+    for ((i = 0; i < START_TRIES; i++)); do
+        if recorder_running; then
+            signal_waybar
+            return 0
+        fi
+        sleep "$WAIT_STEP"
+    done
+    notify-send "Recording failed to start"
+    exit 1
 }
 
 record_stop() {
@@ -83,7 +98,18 @@ record_stop() {
     local file
     file=$(pgrep -af "$RECORDER_RE" | head -n1 | sed -n 's/.* -o //p')
     pkill -SIGINT -f "$RECORDER_RE" || true
-    notify-send "Recording saved" "$file"
+    # The recorder finalises the file after SIGINT: wait for it to exit so
+    # waybar does not read "on" and the notification is truthful.
+    local i
+    for ((i = 0; i < STOP_TRIES; i++)); do
+        recorder_running || break
+        sleep "$WAIT_STEP"
+    done
+    if recorder_running; then
+        notify-send "Recording still finalising" "$file"
+    else
+        notify-send "Recording saved" "$file"
+    fi
     signal_waybar
 }
 

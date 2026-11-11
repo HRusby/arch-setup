@@ -6,7 +6,7 @@ setup() {
     # Only the fakes and the basic tools below are on PATH, so the real
     # grim/slurp/satty/gpu-screen-recorder/pkill/wl-copy can never run.
     mkdir -p "$FAKE_DIR/sys"
-    for c in bash env cat grep sed head tail chmod rm date mkdir tr cut; do
+    for c in bash env cat grep sed head tail chmod rm date mkdir tr cut sleep; do
         ln -s "$(command -v "$c")" "$FAKE_DIR/sys/$c"
     done
     export PATH="$FAKE_DIR/bin:$FAKE_DIR/sys"
@@ -24,7 +24,9 @@ setup() {
     fake tesseract <<< 'echo "hello from the screen"'
     fake wl-copy <<< 'cat > "$CLIP"'
     fake hyprpicker < /dev/null
-    fake pgrep --no-log <<< 'exit 1'
+    export CAPTURE_WAIT_STEP=0 CAPTURE_START_TRIES=3 CAPTURE_STOP_TRIES=3
+    # The recorder counts as running once the fake recorder has been launched.
+    fake pgrep --no-log <<< '[[ $* == *gpu-screen-recorder* ]] && grep -q "^gpu-screen-recorder " "$CALLS"'
 }
 
 # recorder_running [path] — pgrep sees a recorder (-af prints a cmdline).
@@ -115,6 +117,7 @@ recorder_running() {
 @test "record status follows the process not a file" {
     run "$CAPTURE" record start
     [ "$status" -eq 0 ]
+    fake pgrep --no-log <<< 'exit 1'
     run "$CAPTURE" record status
     [ "$output" = off ]
     recorder_running
@@ -130,6 +133,48 @@ recorder_running() {
     [ "$status" -eq 0 ]
     [[ $(calls pkill) == *"pkill -SIGINT -f "*gpu-screen-recorder* ]]
     [[ $(calls notify-send) == *"/v/clip.mp4"* ]]
+}
+
+# running_for <n> — plain pgrep -f succeeds for the first n calls, then fails.
+running_for() {
+    echo 0 > "$FAKE_DIR/n"
+    fake pgrep --no-log <<< "[[ \$1 == -af ]] && { echo '4242 gpu-screen-recorder -w screen -o /v/clip.mp4'; exit 0; }
+n=\$(( \$(cat $FAKE_DIR/n) + 1 )); echo \$n > $FAKE_DIR/n; ((n <= $1))"
+}
+
+@test "record stop waits for the recorder to exit before signalling" {
+    running_for 3
+    run "$CAPTURE" record stop
+    [ "$status" -eq 0 ]
+    [[ $(calls notify-send) == *"Recording saved /v/clip.mp4"* ]]
+    [ "$(calls pkill | tail -n1)" = "pkill -RTMIN+8 waybar" ]
+    [ "$(cat "$FAKE_DIR/n")" -ge 3 ]
+}
+
+@test "record stop that times out says it is still finalising and signals" {
+    recorder_running /v/clip.mp4
+    run "$CAPTURE" record stop
+    [ "$status" -eq 0 ]
+    [[ $(calls notify-send) == *"still finalising"* ]]
+    [[ $(calls notify-send) != *"saved"* ]]
+    [ "$(calls pkill | tail -n1)" = "pkill -RTMIN+8 waybar" ]
+}
+
+@test "record start fails loudly when the recorder never appears" {
+    fake pgrep --no-log <<< 'exit 1'
+    run "$CAPTURE" record start
+    [ "$status" -eq 1 ]
+    [[ $(calls notify-send) == *"Recording failed to start"* ]]
+    [ -z "$(calls pkill)" ]
+}
+
+@test "record start signals waybar only after the recorder is up" {
+    echo 0 > "$FAKE_DIR/n"
+    fake pgrep --no-log <<< "n=\$(( \$(cat $FAKE_DIR/n) + 1 )); echo \$n > $FAKE_DIR/n; ((n >= 3))"
+    run "$CAPTURE" record start
+    [ "$status" -eq 0 ]
+    [ "$(calls pkill)" = "pkill -RTMIN+8 waybar" ]
+    [ -z "$(calls notify-send)" ]
 }
 
 @test "record stop when idle does nothing" {
