@@ -173,3 +173,29 @@ hypridle_running() {
     [ "$status" -eq 2 ]
     [ -z "$(calls pkill)" ]
 }
+
+# A failed change must exit non-zero, say so, and neither signal nor notify.
+assert_failed_cleanly() {
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"toggle: $1 failed"* ]]
+    [ -z "$(calls pkill | grep RTMIN)" ]
+    [ -z "$(calls notify-send)" ]
+}
+
+@test "a failing hyprctl set fails nightlight cleanly" {
+    fake hyprctl <<< '[[ $* == "hyprsunset temperature" ]] && echo 6000 && exit 0; exit 1'
+    run "$TOGGLE" nightlight on
+    assert_failed_cleanly nightlight
+}
+
+@test "a failing makoctl mode -t fails dnd cleanly" {
+    fake makoctl <<< '[[ $* == mode ]] && echo do-not-disturb && exit 0; exit 1'
+    run "$TOGGLE" dnd off
+    assert_failed_cleanly dnd
+}
+
+@test "a failing uwsm-app fails idle on cleanly" {
+    fake uwsm-app <<< 'exit 1'
+    run "$TOGGLE" idle on
+    assert_failed_cleanly idle
+}

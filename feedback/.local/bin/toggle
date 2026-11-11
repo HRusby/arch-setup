@@ -29,35 +29,38 @@ idle_state() {
     if pgrep -x hypridle > /dev/null 2>&1; then echo on; else echo off; fi
 }
 
-# apply_<toggle> <on|off> — change the system; print the confirmation, if any.
+# apply_<toggle> <on|off> — change the system and set MSG to the confirmation
+# (empty for none). Called without a subshell and inside `||`, where set -e is
+# off, so every command that can fail needs its own `|| return 1`.
+MSG=
 apply_dnd() {
-    makoctl mode -t do-not-disturb
+    makoctl mode -t do-not-disturb || return 1
     # Turning it on silences notifications, so confirm only turning it off.
-    [[ $1 == off ]] && echo "Notifications on"
+    [[ $1 == off ]] && MSG="Notifications on"
     return 0
 }
 
 apply_nightlight() {
     if [[ $1 == on ]]; then
-        hyprctl hyprsunset temperature "$ON_TEMP" > /dev/null
-        echo "Night light on"
+        hyprctl hyprsunset temperature "$ON_TEMP" > /dev/null || return 1
+        MSG="Night light on"
     else
-        hyprctl hyprsunset temperature "$OFF_TEMP" > /dev/null
-        echo "Night light off"
+        hyprctl hyprsunset temperature "$OFF_TEMP" > /dev/null || return 1
+        MSG="Night light off"
     fi
 }
 
 apply_idle() {
     if [[ $1 == on ]]; then
-        uwsm-app -- hypridle > /dev/null 2>&1
+        uwsm-app -- hypridle > /dev/null 2>&1 || return 1
     else
         pkill -x hypridle || true
     fi
-    echo "Idle lock $1"
+    MSG="Idle lock $1"
 }
 
 main() {
-    local name=${1:-} action=${2:-flip} current target msg
+    local name=${1:-} action=${2:-flip} current target
     case $name in
         nightlight | dnd | idle) ;;
         *) die "unknown toggle: ${name:-<none>} (use nightlight, dnd or idle)" 2 ;;
@@ -77,10 +80,10 @@ main() {
     fi
     [[ $target == "$current" ]] && return 0
 
-    msg=$("apply_$name" "$target")
+    "apply_$name" "$target" || die "$name failed"
     pkill -RTMIN+8 waybar || true
-    if [[ -n $msg ]]; then
-        notify-send -t 2000 "$msg" || true
+    if [[ -n $MSG ]]; then
+        notify-send -t 2000 "$MSG" || true
     fi
 }
 
