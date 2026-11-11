@@ -1,0 +1,97 @@
+#!/usr/bin/env bash
+# System picker: nested menus on fuzzel --dmenu, read from menu.tsv.
+# Usage: menu [submenu]   (no argument = top level; "capture" = "/capture")
+# Special submenus: apps (app launcher), theme (from theme-set --list),
+# reminder (prompts for minutes and a message). MENU_TSV overrides the table.
+set -euo pipefail
+
+TSV=${MENU_TSV:-${XDG_CONFIG_HOME:-$HOME/.config}/menu/menu.tsv}
+
+die() {
+    echo "menu: $*" >&2
+    exit "${2:-1}"
+}
+
+# pick <prompt> — choose one line from stdin; fails when nothing was chosen.
+pick() {
+    local choice
+    choice=$(fuzzel --dmenu --prompt "$1") || return 1
+    [[ -n $choice ]] || return 1
+    printf '%s\n' "$choice"
+}
+
+# ask <prompt> — read free text with no list; fails on Escape or empty input.
+ask() {
+    local text
+    text=$(fuzzel --dmenu --prompt "$1" --lines 0 < /dev/null) || return 1
+    [[ -n $text ]] || return 1
+    printf '%s\n' "$text"
+}
+
+# run <command line> — launch through uwsm-app.
+run() {
+    local -a argv
+    read -ra argv <<< "$1"
+    exec uwsm-app -- "${argv[@]}"
+}
+
+show_table() {
+    local path=$1 p label cmd
+    local -a labels=() cmds=()
+    [[ -r $TSV ]] || die "cannot read $TSV"
+    while IFS=$'\t' read -r p label cmd; do
+        [[ $p == "$path" ]] || continue
+        labels+=("$label")
+        cmds+=("$cmd")
+    done < "$TSV"
+    ((${#labels[@]})) || die "unknown submenu: $path"
+
+    local choice i
+    choice=$(printf '%s\n' "${labels[@]}" | pick "${path#/} > ") || exit 0
+    for i in "${!labels[@]}"; do
+        if [[ ${labels[i]} == "$choice" ]]; then
+            dispatch "${cmds[i]}"
+            return
+        fi
+    done
+}
+
+show_theme() {
+    local choice
+    choice=$(theme-set --list | pick "theme > ") || exit 0
+    run "theme-set $choice"
+}
+
+do_reminder() {
+    local minutes message
+    minutes=$(ask "Remind in (minutes): ") || exit 0
+    if [[ ! $minutes =~ ^[0-9]+$ ]]; then
+        notify-send "Reminder" "Minutes must be a number, got: $minutes"
+        exit 1
+    fi
+    message=$(ask "Message: ") || exit 0
+    exec uwsm-app -- remind "$minutes" "$message"
+}
+
+# dispatch <command> — "@name" opens a submenu, anything else is run.
+dispatch() {
+    case $1 in
+        @apps) exec fuzzel ;;
+        @theme) show_theme ;;
+        @reminder) do_reminder ;;
+        @*) show_table "/${1#@}" ;;
+        *) run "$1" ;;
+    esac
+}
+
+main() {
+    local name=${1:-}
+    name=${name#/}
+    if [[ -z $name ]]; then
+        show_table /
+    else
+        dispatch "@$name"
+    fi
+}
+
+main "$@"

@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+# Show every described Hyprland bind through fuzzel, e.g. "SUPER + K  Keybindings".
+# Mouse and switch binds are left out. Modmask bits: SHIFT=1 CTRL=4 ALT=8 SUPER=64.
+set -euo pipefail
+
+# shellcheck disable=SC2016  # jq program, not shell
+JQ='
+def has($bit): (((.modmask / $bit) | floor) % 2) == 1;
+def mods: [
+    (select(has(64)) | "SUPER"),
+    (select(has(1)) | "SHIFT"),
+    (select(has(4)) | "CTRL"),
+    (select(has(8)) | "ALT")
+];
+.[]
+| select((.mouse | not) and (.key | startswith("switch:") or startswith("mouse") | not))
+| (mods + [if (.key | length) == 1 then (.key | ascii_upcase) else .key end] | join(" + "))
+  + "  " + (if .description == "" then "(no description)" else .description end)
+'
+
+hyprctl binds -j | jq -r "$JQ" | LC_ALL=C sort -u | fuzzel --dmenu --prompt "keys > " > /dev/null || true

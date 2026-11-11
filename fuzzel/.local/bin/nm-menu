@@ -1,0 +1,77 @@
+#!/usr/bin/env bash
+# Wi-Fi/network menu on fuzzel --dmenu.
+set -euo pipefail
+
+SEP=$'\x01'
+
+pick() {
+    fuzzel --dmenu --prompt "$1"
+}
+
+main() {
+    local -A action=() secured=()
+    local -a lines=()
+    local wired state dev line mark ssid sec sig label
+
+    # Wired status (informational: selecting it does nothing).
+    wired=$(nmcli -t -f TYPE,STATE,DEVICE device status | grep -m1 '^ethernet:' || true)
+    if [[ -n $wired ]]; then
+        IFS=: read -r _ state dev <<< "$wired"
+        lines+=("Wired: $state ($dev)")
+    fi
+
+    # nmcli -t escapes ':' inside fields as '\:'; protect them while splitting.
+    while IFS= read -r line; do
+        [[ -n $line ]] || continue
+        line=${line//\\:/$SEP}
+        IFS=: read -r mark ssid sec sig <<< "$line"
+        ssid=${ssid//$SEP/:}
+        [[ -n $ssid ]] || continue
+        sec=${sec//$SEP/:}
+        [[ $sec == "--" || -z $sec ]] && sec=open
+        [[ $mark == '*' ]] && mark='*' || mark=' '
+        label="$mark $ssid  $sec $sig%"
+        [[ -z ${action[$label]:-} ]] || continue
+        action[$label]=$ssid
+        [[ $sec == open ]] || secured[$label]=1
+        lines+=("$label")
+    done < <(nmcli -t -f IN-USE,SSID,SECURITY,SIGNAL dev wifi list)
+
+    lines+=("Rescan" "Disconnect")
+
+    local choice
+    choice=$(printf '%s\n' "${lines[@]}" | pick "net > ") || exit 0
+    case $choice in
+        "") exit 0 ;;
+        Rescan)
+            nmcli device wifi rescan || true
+            exec "$0"
+            ;;
+        Disconnect)
+            dev=$(nmcli -t -f TYPE,STATE,DEVICE device status | grep -m1 '^wifi:' | cut -d: -f3 || true)
+            [[ -n $dev ]] && nmcli device disconnect "$dev"
+            exit 0
+            ;;
+        Wired:*) exit 0 ;;
+    esac
+
+    ssid=${action[$choice]:-}
+    [[ -n $ssid ]] || exit 0
+    connect "$ssid" "${secured[$choice]:-}"
+}
+
+# connect <ssid> <secured-flag>
+connect() {
+    local ssid=$1 is_secured=$2 pw
+    if nmcli -t -f NAME connection show | grep -qxF -- "$ssid"; then
+        nmcli connection up id "$ssid" || notify-send "Network" "Could not connect to $ssid"
+    elif [[ -n $is_secured ]]; then
+        pw=$(fuzzel --dmenu --password --prompt "Password for $ssid: " --lines 0 < /dev/null) || exit 0
+        [[ -n $pw ]] || exit 0
+        nmcli device wifi connect "$ssid" password "$pw" || notify-send "Network" "Could not connect to $ssid"
+    else
+        nmcli device wifi connect "$ssid" || notify-send "Network" "Could not connect to $ssid"
+    fi
+}
+
+main

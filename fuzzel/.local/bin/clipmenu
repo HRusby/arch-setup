@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+# Clipboard history: pick an entry from cliphist and copy it back.
+set -euo pipefail
+
+choice=$(cliphist list | fuzzel --dmenu --prompt "clip > ") || exit 0
+[[ -n $choice ]] || exit 0
+printf '%s' "$choice" | cliphist decode | wl-copy

@@ -1,0 +1,4 @@
+fuzzel
+cliphist
+wl-clipboard
+networkmanager

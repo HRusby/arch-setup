@@ -1,0 +1,24 @@
+/	Apps	@apps
+/	Theme	@theme
+/	Capture	@capture
+/	Toggles	@toggles
+/	Clipboard	clipmenu
+/	Keybinds	keybinds
+/	Reminder	@reminder
+/	Network	nm-menu
+/	Update	foot -e sysupdate
+/	Power	@power
+/capture	Screenshot region	capture screenshot region
+/capture	Screenshot window	capture screenshot window
+/capture	Screenshot screen	capture screenshot screen
+/capture	Record screen (start/stop)	capture record toggle
+/capture	Copy text from screen (OCR)	capture ocr
+/capture	Pick colour	capture colour
+/toggles	Night light	toggle nightlight
+/toggles	Do not disturb	toggle dnd
+/toggles	Idle lock	toggle idle
+/power	Lock	loginctl lock-session
+/power	Suspend	systemctl suspend
+/power	Logout	uwsm stop
+/power	Reboot	systemctl reboot
+/power	Shutdown	systemctl poweroff
