@@ -143,6 +143,23 @@ use_real_templates() {
     [ "$(calls makoctl)" = "makoctl reload" ]
 }
 
+@test "a failing reload does not stop the others or the exit status" {
+    fake hyprctl < /dev/null
+    fake pkill < /dev/null
+    fake gsettings < /dev/null
+    fake makoctl <<< 'exit 1'
+    running Hyprland waybar mako hyprpaper
+    echo '{{bg}}' > "$THEME_DIR/templates/a.tpl"
+    echo 'wallpaper = "wall.png"' >> "$THEME_DIR/palettes/gruvbox-dark.toml"
+    touch "$THEME_DIR/wallpapers/wall.png"
+    run "$THEME_SET" gruvbox-dark
+    [ "$status" -eq 0 ]
+    [ -n "$(calls makoctl)" ]
+    [[ "$(calls hyprctl)" == *"hyprpaper wallpaper"* ]]
+    [ -n "$(calls gsettings)" ]
+    [ -f "$THEME_DIR/generated/a" ]
+}
+
 @test "does not call a running tool that is not installed" {
     running waybar Hyprland mako
     echo '{{bg}}' > "$THEME_DIR/templates/a.tpl"

@@ -60,7 +60,7 @@ for m in "${modules[@]}"; do
     [[ -f $REPO/$m/packages.aur.txt ]] && mapfile -t -O "${#aur_pkgs[@]}" aur_pkgs < <(entries "$REPO/$m/packages.aur.txt")
 done
 
-stow_args=(--dir="$REPO" --target="$HOME" "${STOW_IGNORES[@]}")
+stow_args=(--dir="$REPO" --target="$HOME" --no-folding "${STOW_IGNORES[@]}")
 (( adopt )) && stow_args+=(--adopt)
 
 if (( dry )); then

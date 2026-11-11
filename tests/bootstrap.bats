@@ -32,7 +32,7 @@ load helpers
     run "$BOOTSTRAP" --modules m1
     [ "$status" -eq 0 ]
     install_line=$(grep -n '^install m1' "$CALLS" | cut -d: -f1)
-    stow_line=$(grep -n '^stow ' "$CALLS" | grep -v -- '--no' | grep -- '--restow m1$' | cut -d: -f1)
+    stow_line=$(grep -n '^stow ' "$CALLS" | grep -v -- ' --no ' | grep -- '--restow m1$' | cut -d: -f1)
     [ "$install_line" -lt "$stow_line" ]
 }
 
@@ -59,9 +59,20 @@ load helpers
     module m2 b
     run "$BOOTSTRAP" --modules m1,m2
     [ "$status" -eq 0 ]
-    stows=$(calls stow | grep -v -- '--no')
+    stows=$(calls stow | grep -v -- ' --no ')
     [[ "$stows" == *"stow --dir=$REPO --target=$HOME "*"--restow m1"* ]]
     [[ "$stows" == *"--restow m2"* ]]
+    [[ "$stows" == *"--no-folding"* ]]
+    [[ "$(calls stow | grep -- ' --no ')" == *"--no-folding"* ]]
+}
+
+@test "directories are created, not folded" {
+    use_real_stow
+    conf_module m1
+    run "$BOOTSTRAP" --modules m1
+    [ "$status" -eq 0 ]
+    [ -d "$HOME/.config/m1" ] && [ ! -L "$HOME/.config/m1" ]
+    [ -L "$HOME/.config/m1/conf" ]
 }
 
 @test "module metadata is never stowed" {

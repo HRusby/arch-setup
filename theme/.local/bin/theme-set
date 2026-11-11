@@ -79,17 +79,17 @@ render() {
 reload() {
     local wall
     if have hyprctl && running Hyprland; then
-        hyprctl reload
+        hyprctl reload || true
     fi
     if have pkill && running waybar; then
-        pkill -SIGUSR2 waybar
+        pkill -SIGUSR2 waybar || true
     fi
     if have makoctl && running mako; then
-        makoctl reload
+        makoctl reload || true
     fi
     wall=${PAL[wallpaper]:-}
     if [[ -n $wall && -f $THEME_DIR/wallpapers/$wall ]] && have hyprctl && running hyprpaper; then
-        hyprctl hyprpaper wallpaper ",$THEME_DIR/wallpapers/$wall"
+        hyprctl hyprpaper wallpaper ",$THEME_DIR/wallpapers/$wall" || true
     fi
     if have gsettings; then
         gsettings set org.gnome.desktop.interface color-scheme prefer-dark || true
