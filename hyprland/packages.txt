@@ -1,0 +1,12 @@
+hyprland
+hyprlock
+hypridle
+hyprsunset
+hyprpaper
+hyprpicker
+hyprpolkitagent
+xdg-desktop-portal-hyprland
+xdg-desktop-portal-gtk
+uwsm
+qt5-wayland
+qt6-wayland
