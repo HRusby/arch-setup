@@ -1,0 +1,152 @@
+#!/usr/bin/env bash
+# Add a "/Windows" entry to limine.conf that chainloads Windows Boot Manager
+# from an EFI system partition on another disk. Run as root.
+#
+# Only vfat partitions on disks other than the one holding / are looked at,
+# each mounted read-only on a temporary directory and unmounted again: no
+# other disk is ever written. The first one holding
+# EFI/Microsoft/Boot/bootmgfw.efi wins. Re-running replaces the entry; when no
+# Windows is found nothing is changed.
+#
+# Environment (mostly for tests):
+#   LIMINE_CONF      config to edit (default: $ESP_PATH/limine.conf, else the
+#                    single limine.conf found in the usual places)
+#   LIMINE_DEFAULTS  file holding ESP_PATH= (default: /etc/default/limine)
+#   LIMINE_MUTEX     limine-snapper-sync's boot partition lock library
+#   LIMINE_WINDOWS_ENTRY_NO_ROOT_CHECK=1  skip the root check
+set -euo pipefail
+
+LOADER=EFI/Microsoft/Boot/bootmgfw.efi
+defaults=${LIMINE_DEFAULTS:-/etc/default/limine}
+mutex=${LIMINE_MUTEX:-/usr/lib/limine/limine-mutex}
+
+die() {
+    echo "limine-windows-entry: $*" >&2
+    exit 1
+}
+
+warn() {
+    echo "limine-windows-entry: $*" >&2
+}
+
+[[ -n ${LIMINE_WINDOWS_ENTRY_NO_ROOT_CHECK:-} ]] || (( EUID == 0 )) || die "must be run as root"
+
+# field <name> <lsblk -P line> — value of one KEY="value" pair.
+field() {
+    local re="(^| )$1=\"([^\"]*)\""
+    [[ $2 =~ $re ]] && echo "${BASH_REMATCH[2]}"
+    return 0
+}
+
+# root_disks — whole disks underneath / (through LUKS, LVM, RAID).
+root_disks() {
+    local src
+    src=$(findmnt -nvo SOURCE /)
+    [[ -n $src ]] || return 0
+    lsblk -nsrpo NAME,TYPE "$src" | awk '$2 == "disk" { print $1 }'
+}
+
+# find_conf — the limine.conf to edit.
+find_conf() {
+    if [[ -n ${LIMINE_CONF:-} ]]; then
+        echo "$LIMINE_CONF"
+        return
+    fi
+    local esp="" line c found=()
+    if [[ -f $defaults ]]; then
+        while read -r line; do
+            [[ $line =~ ^ESP_PATH=\"?([^\"]*)\"?$ ]] && esp=${BASH_REMATCH[1]}
+        done < "$defaults"
+    fi
+    if [[ -n $esp ]]; then
+        [[ -f $esp/limine.conf ]] || die "no limine.conf in ESP_PATH $esp"
+        echo "$esp/limine.conf"
+        return
+    fi
+    for c in /boot/limine.conf /boot/limine/limine.conf /boot/EFI/limine/limine.conf \
+        /boot/EFI/BOOT/limine.conf /efi/limine.conf /efi/EFI/limine/limine.conf \
+        /boot/efi/limine.conf /boot/efi/EFI/limine/limine.conf; do
+        [[ -f $c ]] && found+=("$c")
+    done
+    (( ${#found[@]} == 1 )) || die "found ${#found[@]} limine.conf files (${found[*]:-none}); set LIMINE_CONF"
+    echo "${found[0]}"
+}
+
+mapfile -t roots < <(root_disks)
+(( ${#roots[@]} )) || die "cannot tell which disk holds /; not scanning"
+
+mnt=$(mktemp -d)
+mounted=0
+cleanup() {
+    (( mounted )) && umount "$mnt"
+    rmdir "$mnt"
+}
+trap cleanup EXIT
+
+partuuid=""
+while read -r line; do
+    dev=$(field NAME "$line")
+    disk=$(field PKNAME "$line")
+    uuid=$(field PARTUUID "$line")
+    [[ $(field TYPE "$line") == part && $(field FSTYPE "$line") == vfat && -n $uuid ]] || continue
+    [[ " ${roots[*]} " == *" $disk "* ]] && continue
+
+    where=$(field MOUNTPOINT "$line")
+    if [[ -z $where ]]; then
+        mount -o ro -t vfat "$dev" "$mnt" || { warn "could not mount $dev read-only; skipped"; continue; }
+        mounted=1
+        where=$mnt
+    fi
+    [[ -f $where/$LOADER ]] && partuuid=$uuid
+    if (( mounted )); then
+        umount "$mnt"
+        mounted=0
+    fi
+    if [[ -n $partuuid ]]; then
+        echo "limine-windows-entry: Windows Boot Manager found on $dev"
+        break
+    fi
+done < <(lsblk -Pnpo NAME,TYPE,FSTYPE,PARTUUID,PKNAME,MOUNTPOINT)
+
+if [[ -z $partuuid ]]; then
+    echo "limine-windows-entry: no Windows found on other disks; limine.conf unchanged"
+    exit 0
+fi
+
+conf=$(find_conf)
+[[ -f $conf ]] || die "$conf does not exist"
+
+# limine-snapper-sync asks other tools editing limine.conf to take its lock.
+if [[ -f $mutex ]]; then
+    # shellcheck disable=SC1090
+    source "$mutex"
+    mutex_lock limine-windows-entry
+fi
+
+# The config without any "/Windows" entry (up to the next entry line), trailing
+# blank lines dropped so re-runs don't grow the file.
+kept=$(awk '
+    /^\/Windows[[:space:]]*$/ { skip = 1; next }
+    skip && /^[[:space:]]*\// { skip = 0 }
+    !skip { print }
+' "$conf")
+new=$(printf '%s\n\n%s\n' "$kept" "/Windows
+### Written by limine-windows-entry; re-run it instead of editing this entry.
+comment: Windows Boot Manager
+protocol: efi
+path: guid($partuuid):/$LOADER")
+
+if [[ $new == "$(cat "$conf")" ]]; then
+    echo "limine-windows-entry: $conf already up to date"
+    exit 0
+fi
+
+tmp=$(mktemp "$conf.XXXXXX")
+printf '%s\n' "$new" > "$tmp"
+mv -f "$tmp" "$conf"
+echo "limine-windows-entry: wrote /Windows entry to $conf"
+
+# Re-enroll the config hash if the system enrolls one (no-op otherwise).
+if command -v limine-enroll-config > /dev/null; then
+    limine-enroll-config
+fi

@@ -1,0 +1,6 @@
+plymouth
+limine
+snapper
+snap-pac
+bluez
+bluez-utils
