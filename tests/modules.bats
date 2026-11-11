@@ -73,3 +73,8 @@ xdg-mime default nvim.desktop text/plain" ]
     grep -qx 'Exec=protonmail-bridge --no-window' "$REPO_ROOT/mail/.config/autostart/protonmail-bridge.desktop"
     grep -qx 'protonmail-bridge' "$REPO_ROOT/mail/packages.txt"
 }
+
+@test "no module ships a stowed btop.conf (btop rewrites its config on exit)" {
+    [ -z "$(cd "$REPO_ROOT" && git ls-files -- '*/.config/btop/btop.conf')" ]
+    [ -z "$(find "$REPO_ROOT"/*/.config/btop -name btop.conf 2> /dev/null)" ]
+}

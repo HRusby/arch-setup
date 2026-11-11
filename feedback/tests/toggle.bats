@@ -6,7 +6,7 @@ setup() {
     # Only the fakes and the basic tools below are on PATH, so the real
     # makoctl/hyprctl/pkill/notify-send can never run.
     mkdir -p "$FAKE_DIR/sys"
-    for c in bash env cat grep sed head tail chmod; do
+    for c in bash env cat grep sed head tail chmod rm; do
         ln -s "$(command -v "$c")" "$FAKE_DIR/sys/$c"
     done
     export PATH="$FAKE_DIR/bin:$FAKE_DIR/sys"
@@ -129,10 +129,10 @@ hypridle_running() {
     [ "$(calls notify-send)" = "notify-send -t 2000 Idle lock off" ]
 }
 
-@test "idle on starts hypridle via uwsm-app" {
+@test "idle on starts hypridle as a uwsm service, so it returns" {
     run "$TOGGLE" idle on
     [ "$status" -eq 0 ]
-    [ "$(calls uwsm-app)" = "uwsm-app -- hypridle" ]
+    [ "$(calls uwsm-app)" = "uwsm-app -t service -- hypridle" ]
     [ "$(calls notify-send)" = "notify-send -t 2000 Idle lock on" ]
 }
 
@@ -143,7 +143,7 @@ hypridle_running() {
     : > "$CALLS"
     fake pgrep --no-log <<< 'exit 1'
     run "$TOGGLE" idle
-    [ "$(calls uwsm-app)" = "uwsm-app -- hypridle" ]
+    [ "$(calls uwsm-app)" = "uwsm-app -t service -- hypridle" ]
 }
 
 @test "every change signals waybar RTMIN+8" {

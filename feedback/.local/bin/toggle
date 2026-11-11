@@ -52,7 +52,8 @@ apply_nightlight() {
 
 apply_idle() {
     if [[ $1 == on ]]; then
-        uwsm-app -- hypridle > /dev/null 2>&1 || return 1
+        # A service unit, not the default scope: uwsm-app returns once it is started.
+        uwsm-app -t service -- hypridle > /dev/null 2>&1 || return 1
     else
         pkill -x hypridle || true
     fi
