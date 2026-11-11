@@ -51,5 +51,8 @@ Then **Install**. Review the summary: it must list only the disk you picked.
 
 ## If bootstrap fails
 
-The temporary passwordless sudo rule is removed either way. Fix the problem and
-re-run the command `install-arch` prints, before rebooting.
+The temporary passwordless sudo rule is removed either way. Fix the problem,
+then run `install-arch --resume` before rebooting: it never runs archinstall,
+reuses the `~/arch-setup` clone (`git pull --ff-only`) and runs bootstrap
+again. A plain `install-arch` also notices the install mounted at `/mnt` and
+offers to resume instead of repartitioning.

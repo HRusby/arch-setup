@@ -6,6 +6,8 @@ load ../../tests/helpers
 #   $FAKE_DIR/net  /sys/class/net: eth0 (wired) and wlan0 (wireless)
 #   $FAKE_DIR/routes  JSON that fake `ip -j -4 route show default` prints
 #   $FAKE_DIR/online  exists = fake ping reaches archlinux.org
+#   $FAKE_DIR/mounted exists = fake mountpoint says $TARGET is mounted (an
+#                     install from an earlier run); absent by default
 # Only fakes and basic tools are on PATH; every test feeds stdin explicitly.
 
 CMDLINE="cryptdevice=PARTUUID=1234:root root=/dev/mapper/root rootflags=subvol=@ rw rootfstype=btrfs"
@@ -39,6 +41,7 @@ setup() {
     fake archinstall < /dev/null
     fake visudo < /dev/null
     fake reboot < /dev/null
+    fake mountpoint <<< '[[ -e "$FAKE_DIR/mounted" ]]'
     # The bootstrap run records what it could see while it ran.
     fake arch-chroot <<'EOF'
 if [[ "$*" == *bootstrap.sh* ]]; then
@@ -143,12 +146,97 @@ chroot_calls() {
         "arch-chroot $TARGET runuser -u harry -- env GIT_TERMINAL_PROMPT=0 git clone https://github.com/HRusby/arch-setup.git /home/harry/arch-setup" ]
 }
 
-@test "keeps an existing clone" {
+@test "existing clone reused" {
     mkdir -p "$TARGET/home/harry/arch-setup/.git"
     run "$INSTALL" < /dev/null
     [ "$status" -eq 0 ]
     [ -z "$(chroot_calls | grep ' git clone ')" ]
+    [ "$(chroot_calls | grep ' pull ')" = \
+        "arch-chroot $TARGET runuser -u harry -- env GIT_TERMINAL_PROMPT=0 git -C /home/harry/arch-setup pull --ff-only" ]
     [ -n "$(chroot_calls | grep bootstrap.sh)" ]
+}
+
+@test "existing clone kept when git pull fails" {
+    mkdir -p "$TARGET/home/harry/arch-setup/.git"
+    fake arch-chroot <<< '[[ "$*" == *" pull "* ]] && exit 1; exit 0'
+    run "$INSTALL" < /dev/null
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"git pull failed"* ]]
+    [ -n "$(chroot_calls | grep bootstrap.sh)" ]
+}
+
+@test "refuses to clone into a non-empty directory that is not a clone" {
+    mkdir -p "$TARGET/home/harry/arch-setup"
+    touch "$TARGET/home/harry/arch-setup/stray"
+    run "$INSTALL" < /dev/null
+    [ "$status" -ne 0 ]
+    [ -z "$(chroot_calls | grep 'git ')" ]
+    [ -z "$(chroot_calls | grep bootstrap.sh)" ]
+}
+
+@test "resume detected: existing install skips archinstall" {
+    touch "$FAKE_DIR/mounted"
+    run "$INSTALL" <<< "y"
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"Existing install found on $TARGET"* ]]
+    [ -z "$(calls archinstall)" ]
+    [ -n "$(chroot_calls | grep bootstrap.sh)" ]
+}
+
+@test "resume detected: no answer still skips archinstall" {
+    touch "$FAKE_DIR/mounted"
+    run "$INSTALL" < /dev/null
+    [ "$status" -eq 0 ]
+    [ -z "$(calls archinstall)" ]
+    [ -n "$(chroot_calls | grep bootstrap.sh)" ]
+}
+
+@test "resume declined: runs archinstall" {
+    touch "$FAKE_DIR/mounted"
+    run "$INSTALL" <<< "n"
+    [ "$status" -eq 0 ]
+    [ -n "$(calls archinstall)" ]
+}
+
+@test "mounted target without a UID 1000 user is not offered as a resume" {
+    touch "$FAKE_DIR/mounted"
+    printf '%s\n' 'root:x:0:0::/root:/bin/bash' > "$TARGET/etc/passwd"
+    run "$INSTALL" < /dev/null
+    [ -n "$(calls archinstall)" ]
+}
+
+@test "--resume never runs archinstall" {
+    touch "$FAKE_DIR/mounted"
+    run "$INSTALL" --resume < /dev/null
+    [ "$status" -eq 0 ]
+    [ -z "$(calls archinstall)" ]
+    [ -n "$(chroot_calls | grep bootstrap.sh)" ]
+}
+
+@test "--resume with no install: clear error, no archinstall" {
+    run "$INSTALL" --resume < /dev/null
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"no existing install"* ]]
+    [ -z "$(calls archinstall)" ]
+    [ -z "$(chroot_calls)" ]
+}
+
+@test "rejects unknown options before doing anything" {
+    run "$INSTALL" --bogus < /dev/null
+    [ "$status" -ne 0 ]
+    [ -z "$(calls ping)" ]
+    [ -z "$(calls archinstall)" ]
+}
+
+@test "bootstrap failure points at install-arch --resume" {
+    export BOOTSTRAP_RC=1
+    run "$INSTALL" < /dev/null
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"install-arch --resume"* ]]
+}
+
+@test ".zlogin failure message names --resume" {
+    grep -q 'install-arch --resume' "$REPO_ROOT/iso/profile/airootfs/root/.zlogin"
 }
 
 @test "runs bootstrap as the user with the base and desktop lists" {
@@ -175,7 +263,7 @@ chroot_calls() {
     [ -n "$(calls sudoers)" ]
     [ ! -e "$TARGET/etc/sudoers.d/99-bootstrap" ]
     [[ "$output" == *"bootstrap failed"* ]]
-    [[ "$output" == *"re-run: arch-chroot $TARGET runuser -u harry -- env PROC_CMDLINE=/var/tmp/install-arch.cmdline /home/harry/arch-setup/bootstrap.sh --lists base,desktop"* ]]
+    [[ "$output" == *"(or: arch-chroot $TARGET runuser -u harry -- env PROC_CMDLINE=/var/tmp/install-arch.cmdline /home/harry/arch-setup/bootstrap.sh --lists base,desktop"* ]]
     [ -f "$TARGET/var/tmp/install-arch.cmdline" ]
     [ -z "$(calls reboot)" ]
 }

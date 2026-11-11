@@ -6,6 +6,12 @@
 # Only archinstall touches disks. Everything after it writes only under
 # $TARGET, the system archinstall installed and left mounted.
 #
+# Usage: install-arch [--resume]
+#   --resume  never run archinstall; continue from the bootstrap steps on the
+#             install already mounted at $TARGET (e.g. after bootstrap failed).
+# Without --resume an existing install at $TARGET is detected and offered as a
+# resume, so a re-run can't repartition the freshly installed disk.
+#
 # TARGET, ARCHINSTALL_CONFIG, SYS_CLASS_NET and INSTALL_ARCH_NO_ROOT_CHECK=1
 # override paths and checks (tests).
 set -euo pipefail
@@ -29,6 +35,14 @@ die() {
 say() {
     echo "install-arch: $*"
 }
+
+resume=0
+while (( $# )); do
+    case "$1" in
+        --resume) resume=1; shift ;;
+        *) die "unknown option: $1 (usage: install-arch [--resume])" ;;
+    esac
+done
 
 [[ -n ${INSTALL_ARCH_NO_ROOT_CHECK:-} ]] || (( EUID == 0 )) || die "must be run as root"
 
@@ -76,6 +90,17 @@ connect() {
     done
 }
 
+# install_user — "name:home" of the UID 1000 user in $TARGET/etc/passwd, if any.
+install_user() {
+    [[ -f $target/etc/passwd ]] || return 0
+    awk -F: '$3 == 1000 { print $1 ":" $6; exit }' "$target/etc/passwd"
+}
+
+# existing_install — $TARGET is mounted and holds a system with a UID 1000 user.
+existing_install() {
+    mountpoint -q "$target" && [[ -n $(install_user) ]]
+}
+
 # installed_cmdline — the first kernel cmdline in the limine.conf archinstall wrote.
 installed_cmdline() {
     local conf
@@ -93,15 +118,27 @@ cleanup() {
 connect
 
 # 2. archinstall: the guided menu, pre-filled; nothing is written until the
-#    user picks the disk and chooses Install.
-say "starting archinstall: choose the target disk under 'Disk configuration' (see INSTALL.md)"
-archinstall --config "$config" || die "archinstall failed or was cancelled"
+#    user picks the disk and chooses Install. Skipped when resuming.
+if (( resume )); then
+    existing_install || die "no existing install mounted at $target with a UID 1000 user; run install-arch without --resume"
+elif existing_install; then
+    # No answer (EOF) resumes too: the safe choice never repartitions.
+    say "Existing install found on $target — skip archinstall and resume bootstrap? [Y/n]"
+    read -r answer || answer=y
+    [[ $answer == [nN]* ]] || resume=1
+fi
+if (( ! resume )); then
+    say "starting archinstall: choose the target disk under 'Disk configuration' (see INSTALL.md)"
+    archinstall --config "$config" || die "archinstall failed or was cancelled"
+else
+    say "resuming: archinstall skipped"
+fi
 
 # 3. The user archinstall created.
 [[ -f $target/etc/passwd ]] ||
     die "no installed system at $target; when archinstall finishes choose 'Exit archinstall', not reboot"
 user='' home=''
-IFS=: read -r user home < <(awk -F: '$3 == 1000 { print $1 ":" $6; exit }' "$target/etc/passwd") || true
+IFS=: read -r user home < <(install_user) || true
 [[ $user =~ ^[a-z_][a-z0-9_-]*$ && $home == /* ]] ||
     die "no user with UID 1000 in $target/etc/passwd; add one under 'Authentication' in archinstall"
 
@@ -125,16 +162,21 @@ visudo -cf "$tmp" > /dev/null || die "the temporary sudoers drop-in failed visud
 install -Dm440 "$tmp" "$sudoers"
 
 clone=$home/arch-setup
+git_as_user=(arch-chroot "$target" runuser -u "$user" -- env GIT_TERMINAL_PROMPT=0 git)
 if [[ -d $target$clone/.git ]]; then
-    say "keeping the existing clone at $clone"
+    say "reusing the existing clone at $clone"
+    "${git_as_user[@]}" -C "$clone" pull --ff-only ||
+        say "git pull failed; bootstrapping the existing checkout as it is"
+elif [[ -e $target$clone && -n $(find "$target$clone" -mindepth 1 -maxdepth 1 -print -quit) ]]; then
+    die "$clone exists, is not empty and is not a git clone; move it aside and run install-arch --resume"
 else
-    arch-chroot "$target" runuser -u "$user" -- env GIT_TERMINAL_PROMPT=0 git clone "$repo_url" "$clone"
+    "${git_as_user[@]}" clone "$repo_url" "$clone"
 fi
 
 bootstrap=(runuser -u "$user" -- "${bootstrap_env[@]}" "$clone/bootstrap.sh" --lists "$lists")
 # The cmdline file is kept on failure so the printed re-run command still works.
 arch-chroot "$target" "${bootstrap[@]}" ||
-    die "bootstrap failed (see above). Fix it, then re-run: arch-chroot $target ${bootstrap[*]}"
+    die "bootstrap failed (see above). Fix it, then run: install-arch --resume (or: arch-chroot $target ${bootstrap[*]})"
 cleanup
 rm -f "$cmdline_file"
 

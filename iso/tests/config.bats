@@ -34,7 +34,7 @@ value() {
     [ "$(value .bootloader_config.uki)" = false ]
 }
 
-@test "btrfs subvolumes match spec" {
+@test "INSTALL.md documents the btrfs subvolume layout" {
     # archinstall can't hold a btrfs layout without a device, so the layout is
     # picked in the menu (its default btrfs subvolumes) as INSTALL.md says.
     for line in '`@` → `/`' '`@home` → `/home`' '`@log` → `/var/log`' '`@pkg` → `/var/cache/pacman/pkg`'; do
