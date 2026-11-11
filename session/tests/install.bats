@@ -182,6 +182,50 @@ sudo mount /.snapshots" ]
     grep -qx "sudo $REPO_ROOT/session/.local/bin/limine-windows-entry" "$CALLS"
 }
 
+@test "tidies the Limine config after limine-update and before the Windows entry" {
+    run "$INSTALL" < /dev/null
+    [ "$status" -eq 0 ]
+    update=$(grep -n '^sudo limine-update$' "$CALLS" | sed 's/:.*//')
+    tidy=$(grep -nx "sudo $REPO_ROOT/session/.local/bin/limine-tidy-entries" "$CALLS" | sed 's/:.*//')
+    windows=$(grep -nx "sudo $REPO_ROOT/session/.local/bin/limine-windows-entry" "$CALLS" | sed 's/:.*//')
+    [ -n "$update" ] && [ -n "$tidy" ] && [ -n "$windows" ]
+    [ "$update" -lt "$tidy" ]
+    [ "$tidy" -lt "$windows" ]
+}
+
+@test "stops when the Limine config cannot be tidied" {
+    fake sudo <<'EOF2'
+[[ $1 == */limine-tidy-entries ]] && exit 1
+exit 0
+EOF2
+    run "$INSTALL" < /dev/null
+    [ "$status" -ne 0 ]
+    [[ $output == *"Limine config was not tidied"* ]]
+    [ -z "$(grep 'limine-windows-entry' "$CALLS" || true)" ]
+}
+
+@test "warns loudly when limine-update skipped something" {
+    fake sudo <<'EOF2'
+[[ $1 == limine-update ]] && echo "Skipping kernel linux: no initramfs found"
+exit 0
+EOF2
+    run "$INSTALL" < /dev/null
+    [ "$status" -eq 0 ]
+    [[ $output == *"Skipping kernel linux"* ]]
+    [[ $output == *"WARNING"*"limine-update skipped"* ]]
+}
+
+@test "stops when limine-update fails" {
+    fake sudo <<'EOF2'
+[[ $1 == limine-update ]] && { echo "boom"; exit 1; }
+exit 0
+EOF2
+    run "$INSTALL" < /dev/null
+    [ "$status" -ne 0 ]
+    [[ $output == *boom* ]]
+    [ -z "$(grep 'limine-tidy-entries' "$CALLS" || true)" ]
+}
+
 @test "a failed limine-windows-entry is reported but does not stop the install" {
     fake sudo <<'EOF2'
 [[ $1 == */limine-windows-entry ]] && exit 2

@@ -59,7 +59,19 @@ if [[ ! -e $kernel_cmdline ]]; then
 fi
 
 # Rebuild the initramfs with the new hooks and regenerate the Limine entries.
-sudo limine-update
+# From here on limine-mkinitcpio-hook puts kernels only under
+# ${ESP_PATH}/<machine-id>/, so its entries must be the ones Limine boots.
+update_rc=0
+update_out=$(sudo limine-update 2>&1) || update_rc=$?
+[[ -z $update_out ]] || printf '%s\n' "$update_out"
+(( update_rc == 0 )) || die "limine-update failed (exit $update_rc); see above"
+if grep -qi 'skipping' <<< "$update_out"; then
+    echo "session: WARNING: limine-update skipped something (see above); check the Limine entries before rebooting" >&2
+fi
+
+# One limine.conf, the managed one, without archinstall's stale kernel entries.
+sudo "$here/.local/bin/limine-tidy-entries" ||
+    die "the Limine config was not tidied (see above); fix it before rebooting or upgrading the kernel"
 
 # create_snapper_config — snapper creates /.snapshots as a nested subvolume
 # and fails if it already exists. archinstall may mount an @.snapshots

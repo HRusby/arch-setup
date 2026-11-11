@@ -25,6 +25,7 @@ setup() {
     export LIMINE_CONF="$FAKE_DIR/boot/limine.conf"
     export LIMINE_DEFAULTS="$FAKE_DIR/no-defaults"
     export LIMINE_MUTEX="$FAKE_DIR/no-mutex"
+    export LIMINE_FUNCTIONS="$FAKE_DIR/no-functions"
     export LIMINE_WINDOWS_ENTRY_NO_ROOT_CHECK=1
 
     printf 'timeout: 3\n\n/Arch Linux\n    protocol: linux\n    path: boot():/vmlinuz-linux\n' > "$LIMINE_CONF"
@@ -181,6 +182,16 @@ $RO_MOUNT /dev/sdb1" ]
     cp "$LIMINE_CONF" "$FAKE_DIR/efi/limine.conf"
     echo "ESP_PATH=\"$FAKE_DIR/efi\"" > "$FAKE_DIR/defaults"
     LIMINE_CONF='' LIMINE_DEFAULTS="$FAKE_DIR/defaults" run "$ENTRY"
+    [ "$status" -eq 0 ] || { echo "$output"; false; }
+    grep -qx '/Windows' "$FAKE_DIR/efi/limine.conf"
+}
+
+@test "finds limine.conf the way limine-entry-tool does" {
+    windows_on sda1
+    mkdir -p "$FAKE_DIR/efi"
+    cp "$LIMINE_CONF" "$FAKE_DIR/efi/limine.conf"
+    printf 'load_config() { ESP_PATH=%q; }\n' "$FAKE_DIR/efi" > "$FAKE_DIR/functions"
+    LIMINE_CONF='' LIMINE_FUNCTIONS="$FAKE_DIR/functions" run "$ENTRY"
     [ "$status" -eq 0 ] || { echo "$output"; false; }
     grep -qx '/Windows' "$FAKE_DIR/efi/limine.conf"
 }
