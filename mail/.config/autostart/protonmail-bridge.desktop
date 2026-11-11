@@ -1,0 +1,6 @@
+[Desktop Entry]
+Type=Application
+Name=Proton Mail Bridge
+Comment=IMAP/SMTP bridge for Thunderbird, started hidden at login
+Exec=protonmail-bridge --no-window
+Terminal=false

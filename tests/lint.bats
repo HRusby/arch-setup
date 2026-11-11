@@ -50,7 +50,7 @@ fixture() {
 @test "every script is shellcheck clean" {
     cd "$REPO_ROOT"
     shopt -s nullglob
-    files=(bootstrap.sh iso/*.sh */.local/bin/*)
+    files=(bootstrap.sh iso/*.sh */install.sh */.local/bin/*)
     run shellcheck -x "${files[@]}"
     [ "$status" -eq 0 ] || { echo "$output"; false; }
 }
