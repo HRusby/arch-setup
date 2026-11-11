@@ -1,0 +1,80 @@
+/* Colours are @define-color names from the theme engine's colors.css.
+   The import path is relative to this file. */
+@import url("../theme/generated/colors.css");
+
+* {
+  font-family: "JetBrainsMono Nerd Font", "Font Awesome 6 Free", sans-serif;
+  font-size: 13px;
+  border: none;
+  border-radius: 0;
+  min-height: 0;
+}
+
+window#waybar {
+  background: @bg;
+  color: @fg;
+}
+
+tooltip {
+  background: @bg1;
+  color: @fg;
+  border: 1px solid @accent;
+  border-radius: 6px;
+}
+
+#workspaces button {
+  padding: 0 6px;
+  color: @grey;
+  background: transparent;
+}
+
+#workspaces button.active {
+  color: @accent;
+}
+
+#workspaces button.urgent {
+  color: @red;
+}
+
+#workspaces button:hover {
+  background: @bg2;
+  color: @fg;
+}
+
+#custom-menu,
+#clock,
+#custom-indicators,
+#tray,
+#bluetooth,
+#network,
+#pulseaudio,
+#cpu,
+#memory,
+#custom-weather {
+  padding: 0 8px;
+  color: @fg;
+}
+
+#custom-menu {
+  color: @accent;
+}
+
+#bluetooth.off,
+#bluetooth.disabled,
+#network.disconnected,
+#pulseaudio.muted {
+  color: @fg_dim;
+}
+
+#custom-indicators.recording {
+  color: @red;
+}
+
+#custom-indicators.dnd,
+#custom-indicators.idle {
+  color: @yellow;
+}
+
+#custom-indicators.nightlight {
+  color: @orange;
+}

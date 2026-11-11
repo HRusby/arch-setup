@@ -1,0 +1,45 @@
+#!/usr/bin/env bash
+# Waybar custom module: icons for the active toggles (recording, do not
+# disturb, night light, idle lock inhibited). Empty text when none is active.
+# Usage: waybar-indicators          print the module JSON
+#        waybar-indicators click    stop a recording, else open the toggles menu
+set -euo pipefail
+
+# Font Awesome glyphs.
+declare -A ICON=([recording]=$'\uf111' [dnd]=$'\uf1f6' [nightlight]=$'\uf186' [idle]=$'\uf0f4')
+
+# is_active <name> — true when the feature is on (idle: hypridle stopped).
+is_active() {
+    case $1 in
+        recording) [[ $(capture record status) == on ]] ;;
+        idle) [[ $(toggle idle status) == off ]] ;;
+        *) [[ $(toggle "$1" status) == on ]] ;;
+    esac
+}
+
+print_status() {
+    local name text='' classes=()
+    for name in recording dnd nightlight idle; do
+        is_active "$name" || continue
+        text+="${ICON[$name]} "
+        classes+=("$name")
+    done
+    jq -cn --arg text "${text% }" '{text: $text, class: $ARGS.positional}' --args "${classes[@]}"
+}
+
+click() {
+    if [[ $(capture record status) == on ]]; then
+        capture record toggle
+    else
+        menu /toggles
+    fi
+}
+
+case ${1:-} in
+    click) click ;;
+    "") print_status ;;
+    *)
+        echo "usage: waybar-indicators [click]" >&2
+        exit 2
+        ;;
+esac

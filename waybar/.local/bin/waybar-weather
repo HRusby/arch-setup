@@ -1,0 +1,29 @@
+#!/usr/bin/env bash
+# Waybar custom module: current weather from wttr.in as Waybar JSON.
+# Prints {"text":""} (and exits 0) when the lookup fails, so the module hides.
+set -euo pipefail
+
+# Icons are Font Awesome glyphs picked from wttr.in's weatherCode.
+# shellcheck disable=SC2016  # $c/$now are jq variables
+JQ_FILTER='
+  def icon:
+    (.weatherCode | tonumber? // 0) as $c
+    | if $c == 113 then ""
+      elif $c == 116 or $c == 119 or $c == 122 then ""
+      elif $c == 143 or $c == 248 or $c == 260 then ""
+      elif ([200, 386, 389, 392, 395] | index($c)) then ""
+      elif ([179, 227, 230, 281, 284, 323, 326, 329, 332, 335, 338, 350, 368, 371, 374, 377] | index($c)) then ""
+      elif ($c >= 176 and $c <= 359) then ""
+      else "" end;
+  .current_condition[0] as $now
+  | {text: ($now | icon + " " + .temp_C + "°C"),
+     tooltip: (.nearest_area[0].areaName[0].value + ": " + $now.weatherDesc[0].value)}
+'
+
+main() {
+    local json
+    json=$(curl -fsS 'wttr.in/?format=j1' 2> /dev/null) || json=
+    [[ -n $json ]] && jq -ce "$JQ_FILTER" <<< "$json" 2> /dev/null || echo '{"text":""}'
+}
+
+main

@@ -1,0 +1,87 @@
+{
+  "layer": "top",
+  "position": "top",
+  "height": 28,
+  "spacing": 8,
+
+  "modules-left": ["custom/menu", "hyprland/workspaces"],
+  "modules-center": ["clock", "custom/indicators"],
+  "modules-right": ["tray", "bluetooth", "network", "pulseaudio", "cpu", "memory", "custom/weather"],
+
+  "custom/menu": {
+    "format": "",
+    "tooltip": false,
+    "on-click": "menu"
+  },
+
+  "hyprland/workspaces": {
+    "format": "{icon}",
+    "format-icons": { "default": "", "active": "" },
+    "persistent-workspaces": { "*": 5 },
+    "on-click": "activate"
+  },
+
+  "clock": {
+    "format": "{:%a %d %b %H:%M}",
+    "format-alt": "{:%d %B W%V %Y}",
+    "tooltip-format": "<tt>{calendar}</tt>"
+  },
+
+  // Re-run on SIGRTMIN+8 (sent by toggle and capture); interval is a safety net.
+  "custom/indicators": {
+    "exec": "waybar-indicators",
+    "return-type": "json",
+    "signal": 8,
+    "interval": 30,
+    "on-click": "waybar-indicators click"
+  },
+
+  "tray": { "icon-size": 16, "spacing": 8 },
+
+  "bluetooth": {
+    "format": "",
+    "format-disabled": "",
+    "format-off": "",
+    "format-connected": " {num_connections}",
+    "tooltip-format": "{status}",
+    "tooltip-format-connected": "{device_enumerate}",
+    "tooltip-format-enumerate-connected": "{device_alias}",
+    "on-click": "foot -e bluetui"
+  },
+
+  "network": {
+    "format-wifi": "",
+    "format-ethernet": "",
+    "format-disconnected": "",
+    "tooltip-format-wifi": "{essid} ({signalStrength}%)",
+    "tooltip-format-ethernet": "{ifname}",
+    "tooltip-format-disconnected": "Disconnected",
+    "on-click": "nm-menu"
+  },
+
+  "pulseaudio": {
+    "format": "{icon} {volume}%",
+    "format-muted": "",
+    "format-icons": { "default": ["", "", ""] },
+    "scroll-step": 5,
+    "on-click": "foot -e wiremix"
+  },
+
+  "cpu": {
+    "format": " {usage}%",
+    "interval": 5,
+    "on-click": "foot -e btop"
+  },
+
+  "memory": {
+    "format": " {percentage}%",
+    "interval": 10,
+    "on-click": "foot -e btop"
+  },
+
+  "custom/weather": {
+    "exec": "waybar-weather",
+    "return-type": "json",
+    "interval": 900
+  }
+}

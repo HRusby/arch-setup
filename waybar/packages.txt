@@ -1,0 +1,6 @@
+waybar
+btop
+wiremix
+bluetui
+otf-font-awesome
+jq
