@@ -217,4 +217,8 @@ use_real_templates() {
     grep -q '^background=282828' "$g/fuzzel-colors.ini"
     grep -q 'theme\[main_bg\]="#282828"' "$g/btop.theme"
     grep -q '^background-color=#282828' "$g/mako.conf"
+    grep -qx '\[general\]' "$g/satty.toml"
+    grep -qx 'copy-command = "wl-copy"' "$g/satty.toml"
+    grep -qx '\[color-palette\]' "$g/satty.toml"
+    grep -q '^palette = \["#fb4934", "#fe8019", ' "$g/satty.toml"
 }

@@ -1,0 +1,9 @@
+grim
+slurp
+satty
+wl-clipboard
+gpu-screen-recorder
+tesseract
+tesseract-data-eng
+hyprpicker
+libnotify

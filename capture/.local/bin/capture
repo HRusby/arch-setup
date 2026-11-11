@@ -1,0 +1,127 @@
+#!/usr/bin/env bash
+# Screenshots (annotated in satty), screen recording, OCR and colour pick.
+# Usage: capture screenshot <region|window|screen>
+#        capture record <start|stop|toggle|status>
+#        capture ocr
+#        capture colour
+set -euo pipefail
+
+SHOT_DIR="$HOME/Pictures/Screenshots"
+REC_DIR="$HOME/Videos/Recordings"
+SATTY_CONFIG="$HOME/.config/theme/generated/satty.toml"
+# Matches the recorder process itself, not other commands that merely
+# mention its name.
+RECORDER_RE='(^|/)gpu-screen-recorder( |$)'
+
+die() {
+    echo "capture: $*" >&2
+    exit "${2:-1}"
+}
+
+usage() {
+    die "usage: capture screenshot <region|window|screen> | record <start|stop|toggle|status> | ocr | colour" 2
+}
+
+screenshot() {
+    local area satty_args rc
+    case ${1:-} in
+        region) area=area ;;
+        window) area=active ;;
+        screen) area=output ;;
+        *) usage ;;
+    esac
+    mkdir -p "$SHOT_DIR"
+    satty_args=(--filename - --output-filename "$SHOT_DIR/%Y-%m-%d_%H-%M-%S.png"
+        --copy-command wl-copy --early-exit)
+    [[ -f $SATTY_CONFIG ]] && satty_args=(--config "$SATTY_CONFIG" "${satty_args[@]}")
+    # A cancelled selection makes grimblast fail with no image: that is not an
+    # error, so leave quietly instead of handing satty an empty stream.
+    local statuses
+    set +e
+    grimblast save "$area" - | satty "${satty_args[@]}"
+    statuses=("${PIPESTATUS[@]}")
+    set -e
+    ((statuses[0] == 0)) || exit 0
+    rc=${statuses[1]}
+    exit "$rc"
+}
+
+recorder_running() {
+    pgrep -f "$RECORDER_RE" > /dev/null 2>&1
+}
+
+signal_waybar() {
+    pkill -RTMIN+8 waybar || true
+}
+
+focused_output() {
+    hyprctl monitors -j 2> /dev/null | jq -r '.[] | select(.focused) | .name' 2> /dev/null | head -n1 || true
+}
+
+record_start() {
+    recorder_running && return 0
+    local geometry target out
+    mkdir -p "$REC_DIR"
+    out="$REC_DIR/$(date +%Y-%m-%d_%H-%M-%S).mp4"
+    if geometry=$(slurp -f '%wx%h+%x+%y' 2> /dev/null) && [[ -n $geometry ]]; then
+        target=(-w region -region "$geometry")
+    else
+        # Escape: record the whole focused output.
+        local monitor
+        monitor=$(focused_output)
+        target=(-w "${monitor:-screen}")
+    fi
+    gpu-screen-recorder "${target[@]}" -f 60 -a default_output -o "$out" \
+        > /dev/null 2>&1 < /dev/null &
+    disown
+    signal_waybar
+}
+
+record_stop() {
+    recorder_running || return 0
+    # The output path is read back from the live process, never a state file.
+    local file
+    file=$(pgrep -af "$RECORDER_RE" | head -n1 | sed -n 's/.* -o //p')
+    pkill -SIGINT -f "$RECORDER_RE" || true
+    notify-send "Recording saved" "$file"
+    signal_waybar
+}
+
+record() {
+    case ${1:-} in
+        start) record_start ;;
+        stop) record_stop ;;
+        toggle) if recorder_running; then record_stop; else record_start; fi ;;
+        status) if recorder_running; then echo on; else echo off; fi ;;
+        *) usage ;;
+    esac
+}
+
+ocr() {
+    local geometry text
+    geometry=$(slurp 2> /dev/null) || exit 0
+    [[ -n $geometry ]] || exit 0
+    text=$(grim -g "$geometry" - | tesseract - - -l eng) || die "ocr failed"
+    if [[ -z ${text//[[:space:]]/} ]]; then
+        notify-send "OCR" "No text found"
+        return 0
+    fi
+    printf '%s' "$text" | wl-copy
+    notify-send "Copied text" "${text:0:60}"
+}
+
+colour() {
+    if pgrep -x hyprpicker > /dev/null 2>&1; then
+        pkill hyprpicker || true
+    else
+        hyprpicker -a
+    fi
+}
+
+case ${1:-} in
+    screenshot) screenshot "${2:-}" ;;
+    record) record "${2:-}" ;;
+    ocr) ocr ;;
+    colour) colour ;;
+    *) usage ;;
+esac
