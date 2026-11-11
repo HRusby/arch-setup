@@ -1,0 +1,11 @@
+base-devel
+git
+stow
+neovim
+reflector
+snapper
+pacman-contrib
+jq
+lua
+bats
+shellcheck

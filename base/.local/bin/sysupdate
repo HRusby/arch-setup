@@ -1,0 +1,45 @@
+#!/usr/bin/env bash
+# Snapshot, refresh mirrors, update repo + AUR packages, prune orphans.
+# Usage: sysupdate [--yes]
+set -euo pipefail
+
+yes=0
+case "${1:-}" in
+    "") ;;
+    --yes) yes=1 ;;
+    *) echo "usage: sysupdate [--yes]" >&2; exit 2 ;;
+esac
+
+heading() { printf '\n==> %s\n' "$*"; }
+fail() { echo "sysupdate: $1 failed" >&2; exit 1; }
+
+heading "Snapshot"
+sudo snapper -c root create -d "sysupdate pre" --cleanup-algorithm number || fail snapshot
+
+heading "Mirrors"
+sudo reflector @/etc/xdg/reflector/reflector.conf || fail mirrors
+
+heading "Repo packages"
+sudo pacman -Syu || fail pacman
+
+heading "AUR packages"
+paru -Sua || fail aur
+
+heading "Orphans"
+# pacman -Qdtq exits 1 with no output when there are none.
+mapfile -t orphans < <(pacman -Qdtq || true)
+if (( ${#orphans[@]} == 0 )); then
+    echo "none"
+else
+    printf '%s\n' "${orphans[@]}"
+    answer=y
+    if (( ! yes )); then
+        read -r -p "Remove these orphans? [y/N] " answer || answer=n
+    fi
+    if [[ $answer == [yY]* ]]; then
+        sudo pacman -Rns "${orphans[@]}"
+    fi
+fi
+
+heading "Pacnew files"
+pacdiff -o || true
