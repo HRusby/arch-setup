@@ -42,6 +42,7 @@ Tools: `iso/test-vm.sh [--iso PATH] [--recreate]` boots the newest `iso/out/*.is
 | Check | How | Result |
 |---|---|---|
 | Auto-login to Hyprland | No login prompt after the LUKS passphrase: tty1 auto-login starts Hyprland through uwsm. | |
+| Repo scripts on PATH | In a terminal inside the session, `command -v menu` prints `~/.local/bin/menu` (`~/.local/bin` comes from `~/.bash_profile` via uwsm). | |
 | Waybar appears | The bar is on screen with no error notification. | |
 | Caps Lock still toggles | Press Caps Lock in a terminal: typed letters switch case, and the swayosd Caps Lock indicator shows. | |
 | Theme applied on first login | `theme-set gruvbox-dark` has been run (a first bootstrap may not have applied it). Run it once and check the colours change everywhere. | |

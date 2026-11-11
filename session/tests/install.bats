@@ -327,3 +327,22 @@ uwsm start hyprland.desktop" ]
     [ "$(tr '\n' ' ' < "$REPO_ROOT/session/packages.txt")" = "plymouth limine snapper snap-pac bluez bluez-utils " ]
     [ "$(tr '\n' ' ' < "$REPO_ROOT/session/packages.aur.txt")" = "limine-snapper-sync limine-mkinitcpio-hook " ]
 }
+
+@test "bash_profile puts ~/.local/bin on PATH before uwsm starts the session" {
+    fake uwsm <<< '[[ $1 == start ]] && echo "PATH=$PATH" >> "$CALLS"; [[ $1 == check ]] && exit 0; exit 0'
+    run bash --noprofile --norc -c ". '$REPO_ROOT/session/.bash_profile'"
+    [ "$status" -eq 0 ]
+    [[ "$(grep '^PATH=' "$CALLS")" == "PATH=$HOME/.local/bin:"* ]]
+}
+
+@test "bash_profile exports ~/.local/bin on PATH once" {
+    fake uwsm <<< 'exit 1'
+    run bash --noprofile --norc -c "PATH='$HOME/.local/bin:$PATH'; . '$REPO_ROOT/session/.bash_profile'; . '$REPO_ROOT/session/.bash_profile'; bash -c 'echo \"\$PATH\"'"
+    [ "$status" -eq 0 ]
+    [ "$(tr ':' '\n' <<< "$output" | grep -cx "$HOME/.local/bin")" -eq 1 ]
+
+    run bash --noprofile --norc -c ". '$REPO_ROOT/session/.bash_profile'; . '$REPO_ROOT/session/.bash_profile'; bash -c 'echo \"\$PATH\"'"
+    [ "$status" -eq 0 ]
+    [[ $output == "$HOME/.local/bin:"* ]]
+    [ "$(tr ':' '\n' <<< "$output" | grep -cx "$HOME/.local/bin")" -eq 1 ]
+}
