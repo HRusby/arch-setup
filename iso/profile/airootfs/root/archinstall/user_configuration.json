@@ -1,0 +1,40 @@
+{
+  "version": "4.5",
+  "archinstall-language": "English",
+  "locale_config": {
+    "kb_layout": "uk",
+    "sys_lang": "en_US.UTF-8",
+    "sys_enc": "UTF-8"
+  },
+  "timezone": "Europe/London",
+  "ntp": true,
+  "kernels": [
+    "linux"
+  ],
+  "bootloader_config": {
+    "bootloader": "Limine",
+    "uki": false,
+    "removable": false
+  },
+  "network_config": {
+    "type": "nm"
+  },
+  "app_config": {
+    "audio_config": {
+      "audio": "pipewire"
+    }
+  },
+  "profile_config": {
+    "profile": {
+      "main": "Minimal",
+      "details": []
+    }
+  },
+  "swap": {
+    "enabled": true,
+    "algorithm": "zstd"
+  },
+  "packages": [
+    "git"
+  ]
+}

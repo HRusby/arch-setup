@@ -1,0 +1,147 @@
+#!/usr/bin/env bash
+# Live-ISO installer: get online, run archinstall with the saved config (the
+# user picks the disk and sets the user, passwords, LUKS passphrase and
+# hostname), then clone this repo inside the new system and run its bootstrap.
+#
+# Only archinstall touches disks. Everything after it writes only under
+# $TARGET, the system archinstall installed and left mounted.
+#
+# TARGET, ARCHINSTALL_CONFIG, SYS_CLASS_NET and INSTALL_ARCH_NO_ROOT_CHECK=1
+# override paths and checks (tests).
+set -euo pipefail
+
+target=${TARGET:-/mnt}
+config=${ARCHINSTALL_CONFIG:-/root/archinstall/user_configuration.json}
+sys_class_net=${SYS_CLASS_NET:-/sys/class/net}
+repo_url=https://github.com/HRusby/arch-setup.git
+lists=base,desktop
+sudoers=$target/etc/sudoers.d/99-bootstrap
+# Inside the chroot /proc/cmdline is the live ISO's, so the session module is
+# handed the installed system's kernel cmdline through PROC_CMDLINE instead.
+chroot_cmdline=/var/tmp/install-arch.cmdline
+cmdline_file=$target$chroot_cmdline
+
+die() {
+    echo "install-arch: $*" >&2
+    exit 1
+}
+
+say() {
+    echo "install-arch: $*"
+}
+
+[[ -n ${INSTALL_ARCH_NO_ROOT_CHECK:-} ]] || (( EUID == 0 )) || die "must be run as root"
+
+online() {
+    ping -c1 -W3 archlinux.org > /dev/null 2>&1
+}
+
+# wired_route — a default IPv4 route goes through a non-wireless interface.
+wired_route() {
+    local dev
+    while read -r dev; do
+        [[ -n $dev && ! -e $sys_class_net/$dev/wireless ]] && return 0
+    done < <(ip -j -4 route show default | jq -r '.[].dev // empty')
+    return 1
+}
+
+# wait_online — up to ~10 s for archlinux.org to answer (DHCP/DNS settling).
+wait_online() {
+    local i
+    for i in {1..10}; do
+        online && return 0
+        (( i < 10 )) && sleep 1
+    done
+    return 1
+}
+
+wifi_device() {
+    local dev
+    for dev in "$sys_class_net"/*/wireless; do
+        [[ -e $dev ]] && { basename "$(dirname "$dev")"; return; }
+    done
+    echo wlan0
+}
+
+connect() {
+    if wired_route && wait_online; then
+        say "wired network is up; skipping Wi-Fi"
+        return
+    fi
+    local wlan
+    wlan=$(wifi_device)
+    until online; do
+        say "No wired network. In iwctl: station $wlan scan, station $wlan connect <SSID>, then exit."
+        iwctl || true
+    done
+}
+
+# installed_cmdline — the first kernel cmdline in the limine.conf archinstall wrote.
+installed_cmdline() {
+    local conf
+    conf=$(find "$target/boot" "$target/efi" -name limine.conf -print -quit 2> /dev/null || true)
+    [[ -n $conf ]] || return 0
+    sed -n 's/^[[:space:]]*cmdline:[[:space:]]*//p' "$conf" | sed -n '1p'
+}
+
+# cleanup — drop the temporary sudo rights (always, even when bootstrap fails).
+cleanup() {
+    rm -f "$sudoers" "${tmp:-}"
+}
+
+# 1. Network.
+connect
+
+# 2. archinstall: the guided menu, pre-filled; nothing is written until the
+#    user picks the disk and chooses Install.
+say "starting archinstall: choose the target disk under 'Disk configuration' (see INSTALL.md)"
+archinstall --config "$config" || die "archinstall failed or was cancelled"
+
+# 3. The user archinstall created.
+[[ -f $target/etc/passwd ]] ||
+    die "no installed system at $target; when archinstall finishes choose 'Exit archinstall', not reboot"
+user='' home=''
+IFS=: read -r user home < <(awk -F: '$3 == 1000 { print $1 ":" $6; exit }' "$target/etc/passwd") || true
+[[ $user =~ ^[a-z_][a-z0-9_-]*$ && $home == /* ]] ||
+    die "no user with UID 1000 in $target/etc/passwd; add one under 'Authentication' in archinstall"
+
+# 4. Bootstrap inside the new system, with passwordless sudo only while it runs.
+trap cleanup EXIT
+trap 'exit 130' INT TERM HUP
+
+bootstrap_env=()
+if [[ ! -e $target/etc/kernel/cmdline ]]; then
+    cmdline=$(installed_cmdline)
+    [[ -n $cmdline ]] || die "no kernel cmdline in archinstall's limine.conf under $target/boot; not running bootstrap"
+    mkdir -p "$(dirname "$cmdline_file")"
+    printf '%s\n' "$cmdline" > "$cmdline_file"
+    chmod 644 "$cmdline_file"
+    bootstrap_env=(env "PROC_CMDLINE=$chroot_cmdline")
+fi
+
+tmp=$(mktemp)
+printf '%s ALL=(ALL:ALL) NOPASSWD: ALL\n' "$user" > "$tmp"
+visudo -cf "$tmp" > /dev/null || die "the temporary sudoers drop-in failed visudo -c; not running bootstrap"
+install -Dm440 "$tmp" "$sudoers"
+
+clone=$home/arch-setup
+if [[ -d $target$clone/.git ]]; then
+    say "keeping the existing clone at $clone"
+else
+    arch-chroot "$target" runuser -u "$user" -- env GIT_TERMINAL_PROMPT=0 git clone "$repo_url" "$clone"
+fi
+
+bootstrap=(runuser -u "$user" -- "${bootstrap_env[@]}" "$clone/bootstrap.sh" --lists "$lists")
+# The cmdline file is kept on failure so the printed re-run command still works.
+arch-chroot "$target" "${bootstrap[@]}" ||
+    die "bootstrap failed (see above). Fix it, then re-run: arch-chroot $target ${bootstrap[*]}"
+cleanup
+rm -f "$cmdline_file"
+
+# 5. Done.
+say "installed. Remove the USB stick before the machine restarts."
+read -r -p "Reboot now? [Y/n] " answer || answer=n
+case $answer in
+    [nN]*) say "not rebooting; run 'reboot' when ready" ;;
+    *) reboot ;;
+esac

@@ -1,0 +1,4 @@
+# Added to releng's packages.x86_64 by iso/build.sh (skipped if already listed).
+git
+archinstall
+jq
