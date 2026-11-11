@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Thunderbird handles mailto links and mail messages. xdg-mime writes
-# ~/.config/mimeapps.list, which the apps module also stows, so the defaults
-# are set here rather than shipped as a second copy of that file.
+# ~/.config/mimeapps.list, which is runtime state, so the defaults
+# are set here; the file itself is never stowed.
 set -euo pipefail
 
 xdg-mime default org.mozilla.Thunderbird.desktop \

@@ -46,12 +46,16 @@ LUA
     [ "$status" -eq 0 ] || { echo "$output"; false; }
 }
 
-@test "mimeapps defaults to firefox for https" {
-    f="$REPO_ROOT/apps/.config/mimeapps.list"
-    for t in x-scheme-handler/http x-scheme-handler/https text/html; do
-        grep -qx "$t=firefox.desktop" "$f" || { echo "missing $t"; false; }
-    done
-    grep -qx 'text/plain=nvim.desktop' "$f"
+@test "apps install.sh sets firefox and nvim defaults" {
+    fake xdg-mime < /dev/null
+    run "$REPO_ROOT/apps/install.sh"
+    [ "$status" -eq 0 ]
+    [ "$(calls xdg-mime)" = "xdg-mime default firefox.desktop x-scheme-handler/http x-scheme-handler/https text/html
+xdg-mime default nvim.desktop text/plain" ]
+}
+
+@test "no module ships a stowed mimeapps.list" {
+    [ -z "$(find "$REPO_ROOT" -path "$REPO_ROOT/.git" -prune -o -path '*/.config/mimeapps.list' -print)" ]
 }
 
 @test "mail module is in no install list" {
