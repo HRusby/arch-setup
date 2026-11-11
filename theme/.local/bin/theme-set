@@ -1,0 +1,134 @@
+#!/usr/bin/env bash
+# Render the chosen palette into every template, then reload running tools.
+# Usage: theme-set <name> | theme-set --list
+# THEME_DIR overrides ~/.config/theme (used by the tests).
+set -euo pipefail
+
+THEME_DIR=${THEME_DIR:-$HOME/.config/theme}
+REQUIRED=(bg bg1 bg2 bg3 fg fg_dim grey red green yellow blue purple aqua orange accent)
+
+die() {
+    echo "theme-set: $*" >&2
+    exit "${2:-1}"
+}
+
+# running <process> — true when pgrep finds it.
+running() {
+    pgrep -x "$1" > /dev/null 2>&1
+}
+
+# have <cmd> — true when the command exists.
+have() {
+    command -v "$1" > /dev/null 2>&1
+}
+
+list_themes() {
+    local f
+    for f in "$THEME_DIR"/palettes/*.toml; do
+        [[ -e $f ]] && basename "$f" .toml
+    done
+    return 0
+}
+
+declare -A PAL
+tmp=
+
+# load_palette <file> — fill PAL from `key = "#rrggbb"` lines; check required keys.
+load_palette() {
+    local line key val k
+    local re='^[[:space:]]*([a-z0-9_]+)[[:space:]]*=[[:space:]]*"([^"]*)"[[:space:]]*(#.*)?$'
+    while IFS= read -r line || [[ -n $line ]]; do
+        [[ $line =~ ^[[:space:]]*(#.*)?$ ]] && continue
+        [[ $line =~ $re ]] || die "$1: cannot parse line: $line"
+        key=${BASH_REMATCH[1]}
+        val=${BASH_REMATCH[2]}
+        if [[ $key != wallpaper ]]; then
+            [[ $val =~ ^#[0-9a-fA-F]{6}$ ]] || die "$1: bad colour for $key: $val"
+            val=${val,,}
+        fi
+        PAL[$key]=$val
+    done < "$1"
+    for k in "${REQUIRED[@]}"; do
+        [[ -n ${PAL[$k]:-} ]] || die "$1: missing required key: $k"
+    done
+}
+
+# render <template> — expand {{key}} and {{key.hex}} to stdout; fail on unknown keys.
+render() {
+    local rest line out key
+    while IFS= read -r line || [[ -n $line ]]; do
+        out=
+        rest=$line
+        while [[ $rest =~ \{\{([^{}]*)\}\} ]]; do
+            key=${BASH_REMATCH[1]}
+            out+=${rest%%"{{$key}}"*}
+            rest=${rest#*"{{$key}}"}
+            if [[ $key == *.hex && -n ${PAL[${key%.hex}]:-} && ${key%.hex} != wallpaper ]]; then
+                key=${PAL[${key%.hex}]}
+                out+=${key#\#}
+            elif [[ $key != *.* && $key != wallpaper && -n ${PAL[$key]:-} ]]; then
+                out+=${PAL[$key]}
+            else
+                die "$1: unknown placeholder: {{$key}}"
+            fi
+        done
+        printf '%s\n' "$out$rest"
+    done < "$1"
+}
+
+reload() {
+    local wall
+    if have hyprctl && running Hyprland; then
+        hyprctl reload
+    fi
+    if have pkill && running waybar; then
+        pkill -SIGUSR2 waybar
+    fi
+    if have makoctl && running mako; then
+        makoctl reload
+    fi
+    wall=${PAL[wallpaper]:-}
+    if [[ -n $wall && -f $THEME_DIR/wallpapers/$wall ]] && have hyprctl && running hyprpaper; then
+        hyprctl hyprpaper wallpaper ",$THEME_DIR/wallpapers/$wall"
+    fi
+    if have gsettings; then
+        gsettings set org.gnome.desktop.interface color-scheme prefer-dark || true
+    fi
+    return 0
+}
+
+main() {
+    local name palette tpl f
+    [[ $# -eq 1 ]] || die "usage: theme-set <name> | --list" 2
+    if [[ $1 == --list ]]; then
+        list_themes
+        return 0
+    fi
+    name=$1
+    palette=$THEME_DIR/palettes/$name.toml
+    [[ $name != */* && -f $palette ]] || die "unknown theme: $name" 2
+
+    load_palette "$palette"
+
+    tmp=$(mktemp -d "$THEME_DIR/.render.XXXXXX")
+    trap 'rm -rf "${tmp:-}"' EXIT
+    for tpl in "$THEME_DIR"/templates/*.tpl; do
+        [[ -e $tpl ]] || continue
+        render "$tpl" > "$tmp/$(basename "$tpl" .tpl)"
+    done
+
+    mkdir -p "$THEME_DIR/generated"
+    for f in "$tmp"/*; do
+        [[ -e $f ]] && mv -f "$f" "$THEME_DIR/generated/"
+    done
+    ln -sfn "$palette" "$THEME_DIR/current"
+
+    if [[ -e $THEME_DIR/generated/btop.theme ]]; then
+        mkdir -p "$HOME/.config/btop/themes"
+        ln -sfn "$THEME_DIR/generated/btop.theme" "$HOME/.config/btop/themes/palette.theme"
+    fi
+
+    reload
+}
+
+main "$@"

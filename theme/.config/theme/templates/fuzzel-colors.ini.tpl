@@ -1,0 +1,12 @@
+[colors]
+background={{bg.hex}}f2
+text={{fg.hex}}ff
+prompt={{fg_dim.hex}}ff
+placeholder={{grey.hex}}ff
+input={{fg.hex}}ff
+match={{accent.hex}}ff
+selection={{bg2.hex}}ff
+selection-text={{fg.hex}}ff
+selection-match={{accent.hex}}ff
+counter={{grey.hex}}ff
+border={{accent.hex}}ff

@@ -1,0 +1,15 @@
+@define-color bg {{bg}};
+@define-color bg1 {{bg1}};
+@define-color bg2 {{bg2}};
+@define-color bg3 {{bg3}};
+@define-color fg {{fg}};
+@define-color fg_dim {{fg_dim}};
+@define-color grey {{grey}};
+@define-color red {{red}};
+@define-color green {{green}};
+@define-color yellow {{yellow}};
+@define-color blue {{blue}};
+@define-color purple {{purple}};
+@define-color aqua {{aqua}};
+@define-color orange {{orange}};
+@define-color accent {{accent}};

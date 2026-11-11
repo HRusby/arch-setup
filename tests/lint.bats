@@ -7,7 +7,7 @@ colour_hits() {
     (
         cd "$1"
         git ls-files -co --exclude-standard -z |
-            grep -zv -e '^docs/' -e '^tests/' -e '^\.superpowers/' \
+            grep -zv -e '^docs/' -e '^tests/' -e '^[^/]*/tests/' -e '^\.superpowers/' \
                 -e '^theme/\.config/theme/palettes/' -e '^[^/]*$' |
             xargs -0 -r grep -InE "$COLOUR_RE" || true
     )

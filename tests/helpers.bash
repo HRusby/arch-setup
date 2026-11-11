@@ -3,9 +3,10 @@
 # to $CALLS so tests can assert on calls and their order.
 
 # shellcheck disable=SC2034  # used by the .bats files
-REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/.." && pwd)"
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
-setup() {
+# sandbox — temp $HOME, $CALLS log and a fake-command dir at the front of PATH.
+sandbox() {
     export FAKE_DIR="$BATS_TEST_TMPDIR"
     export HOME="$FAKE_DIR/home"
     export CALLS="$FAKE_DIR/calls.log"
@@ -13,6 +14,11 @@ setup() {
     mkdir -p "$HOME" "$FAKE_DIR/bin" "$REPO"
     : > "$CALLS"
     export PATH="$FAKE_DIR/bin:$PATH"
+}
+
+# Bootstrap-specific setup; module tests call `sandbox` from their own setup.
+setup() {
+    sandbox
 
     # The runner locates the repo from its own path, so test against a copy.
     cp "$REPO_ROOT/bootstrap.sh" "$REPO/bootstrap.sh" 2>/dev/null || true

@@ -1,0 +1,17 @@
+return {
+    bg = "{{bg.hex}}",
+    bg1 = "{{bg1.hex}}",
+    bg2 = "{{bg2.hex}}",
+    bg3 = "{{bg3.hex}}",
+    fg = "{{fg.hex}}",
+    fg_dim = "{{fg_dim.hex}}",
+    grey = "{{grey.hex}}",
+    red = "{{red.hex}}",
+    green = "{{green.hex}}",
+    yellow = "{{yellow.hex}}",
+    blue = "{{blue.hex}}",
+    purple = "{{purple.hex}}",
+    aqua = "{{aqua.hex}}",
+    orange = "{{orange.hex}}",
+    accent = "{{accent.hex}}",
+}
