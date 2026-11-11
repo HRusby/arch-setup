@@ -34,3 +34,11 @@ setup() {
     [ "$status" -eq 0 ]
     [ "$(calls sudo)" = "sudo install -Dm644 $REPO_ROOT/base/system/etc/xdg/reflector/reflector.conf /etc/xdg/reflector/reflector.conf" ]
 }
+
+@test "reflector.conf options are single-token values" {
+    conf="$REPO_ROOT/base/system/etc/xdg/reflector/reflector.conf"
+    while read -r line; do
+        [[ -z $line || $line == \#* ]] && continue
+        [[ $line =~ ^--[a-z-]+(\ [^\ ]+)?$ ]] || { echo "bad line: $line"; return 1; }
+    done < "$conf"
+}
