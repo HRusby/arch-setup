@@ -77,15 +77,16 @@ sudo "$here/.local/bin/limine-tidy-entries" ||
 # and fails if it already exists. archinstall may mount an @.snapshots
 # subvolume there: move it aside, let snapper write its config, drop the
 # nested subvolume snapper made and remount @.snapshots from fstab.
+# --no-dbus: bootstrap runs in arch-chroot, with no system bus or snapperd.
 create_snapper_config() {
     if ! findmnt -n --mountpoint /.snapshots > /dev/null; then
-        sudo snapper -c root create-config / || die "snapper could not create the root config"
+        sudo snapper --no-dbus -c root create-config / || die "snapper could not create the root config"
         return 0
     fi
     findmnt -n --fstab --mountpoint /.snapshots > /dev/null ||
         die "/.snapshots is mounted but not listed in fstab; set up snapper by hand"
     sudo umount /.snapshots
-    if ! { sudo rmdir /.snapshots && sudo snapper -c root create-config /; }; then
+    if ! { sudo rmdir /.snapshots && sudo snapper --no-dbus -c root create-config /; }; then
         sudo mkdir -p /.snapshots
         sudo mount /.snapshots
         die "snapper could not create the root config; /.snapshots remounted"

@@ -76,7 +76,7 @@ ExecStart=-/sbin/agetty -o '-p -f -- \\\\u' --noclear --autologin alice %I \$TER
     rm "$SNAPPER_ROOT_CONFIG"
     run "$INSTALL" < /dev/null
     [ "$status" -eq 0 ]
-    [ "$(grep "^sudo snapper " "$CALLS")" = "sudo snapper -c root create-config /" ]
+    [ "$(grep "^sudo snapper " "$CALLS")" = "sudo snapper --no-dbus -c root create-config /" ]
     [ -z "$(grep -E '^sudo (umount|btrfs)' "$CALLS" || true)" ]
 }
 
@@ -86,7 +86,7 @@ ExecStart=-/sbin/agetty -o '-p -f -- \\\\u' --noclear --autologin alice %I \$TER
     [ "$status" -eq 0 ] || { echo "$output"; false; }
     [ "$(grep -E '^sudo (umount|rmdir|snapper|btrfs|mkdir|mount|chmod) ' "$CALLS")" = "sudo umount /.snapshots
 sudo rmdir /.snapshots
-sudo snapper -c root create-config /
+sudo snapper --no-dbus -c root create-config /
 sudo btrfs subvolume delete /.snapshots
 sudo mkdir /.snapshots
 sudo mount /.snapshots
@@ -345,4 +345,10 @@ uwsm start hyprland.desktop" ]
     [ "$status" -eq 0 ]
     [[ $output == "$HOME/.local/bin:"* ]]
     [ "$(tr ':' '\n' <<< "$output" | grep -cx "$HOME/.local/bin")" -eq 1 ]
+}
+
+@test "every snapper call works without D-Bus (arch-chroot has no system bus)" {
+    calls=$(grep -o 'sudo snapper [^|;&]*' "$INSTALL")
+    [ "$(grep -c . <<< "$calls")" -eq 2 ]
+    [ -z "$(grep -v '^sudo snapper --no-dbus ' <<< "$calls" || true)" ]
 }
