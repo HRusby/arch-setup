@@ -6,13 +6,14 @@ set -euo pipefail
 REPO=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 
 # Module metadata that must never be linked into $HOME.
+# stow matches --ignore against each basename (any depth), so no leading "/".
 STOW_IGNORES=(
-    --ignore='^/packages\.txt$'
-    --ignore='^/packages\.aur\.txt$'
-    --ignore='^/install\.sh$'
-    --ignore='^/post-install\.sh$'
-    --ignore='^/tests$'
-    --ignore='^/system$'
+    --ignore='^packages\.txt$'
+    --ignore='^packages\.aur\.txt$'
+    --ignore='^install\.sh$'
+    --ignore='^post-install\.sh$'
+    --ignore='^tests$'
+    --ignore='^system$'
 )
 
 modules=()
