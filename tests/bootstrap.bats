@@ -193,3 +193,88 @@ load helpers
     [ "$status" -ne 0 ]
     [ ! -s "$CALLS" ]
 }
+
+# no_paru — drop the paru fake and restrict PATH to fakes plus the basics
+# bootstrap needs, so no paru installed on the host is found. makepkg's fake
+# "installs" paru, as makepkg -si would.
+no_paru() {
+    rm -f "$FAKE_DIR/bin/paru"
+    mkdir -p "$FAKE_DIR/sys"
+    for c in bash env sed grep dirname mktemp rm mkdir chmod cat cut paste; do
+        ln -sf "$(command -v "$c")" "$FAKE_DIR/sys/$c"
+    done
+    export PATH="$FAKE_DIR/bin:$FAKE_DIR/sys"
+    fake git <<< 'mkdir -p "${@: -1}"'
+    fake makepkg <<'EOF2'
+printf '#!/bin/bash\necho "paru $*" >> "$CALLS"\n' > "$FAKE_DIR/bin/paru"
+chmod +x "$FAKE_DIR/bin/paru"
+EOF2
+}
+
+@test "builds paru-bin after pacman and before paru -S when paru is missing" {
+    no_paru
+    module m1 a
+    echo x > "$REPO/m1/packages.aur.txt"
+    run "$BOOTSTRAP" --modules m1
+    [ "$status" -eq 0 ] || { echo "$output"; false; }
+    [[ "$(calls git)" == "git clone https://aur.archlinux.org/paru-bin.git "*/paru-bin ]]
+    [ "$(calls makepkg)" = "makepkg -si --noconfirm" ]
+    [ "$(grep -E '^(sudo pacman|git|makepkg|paru) ' "$CALLS" | cut -d' ' -f1-2 | paste -sd,)" = \
+        "sudo pacman,git clone,makepkg -si,paru -S" ]
+}
+
+@test "removes the paru-bin build directory afterwards" {
+    no_paru
+    module m1 a
+    echo x > "$REPO/m1/packages.aur.txt"
+    run "$BOOTSTRAP" --modules m1
+    [ "$status" -eq 0 ]
+    dir=$(calls git | sed 's/.* //')
+    [ ! -e "$dir" ]
+}
+
+@test "stops when paru is still missing after the build" {
+    no_paru
+    fake makepkg < /dev/null
+    module m1 a
+    echo x > "$REPO/m1/packages.aur.txt"
+    run "$BOOTSTRAP" --modules m1
+    [ "$status" -ne 0 ]
+    [[ $output == *paru* ]]
+    [ -z "$(calls stow)" ]
+}
+
+@test "does not build paru when it is already installed" {
+    module m1 a
+    echo x > "$REPO/m1/packages.aur.txt"
+    fake git < /dev/null
+    fake makepkg < /dev/null
+    run "$BOOTSTRAP" --modules m1
+    [ "$status" -eq 0 ]
+    [ -z "$(calls git)" ]
+    [ -z "$(calls makepkg)" ]
+}
+
+@test "does not build paru when no module has aur packages" {
+    no_paru
+    module m1 a
+    run "$BOOTSTRAP" --modules m1
+    [ "$status" -eq 0 ]
+    [ -z "$(calls git)" ]
+    [ -z "$(calls makepkg)" ]
+}
+
+@test "--dry-run shows the paru build step only when it would run" {
+    no_paru
+    module m1 a
+    echo x > "$REPO/m1/packages.aur.txt"
+    run "$BOOTSTRAP" --modules m1 --dry-run
+    [ "$status" -eq 0 ]
+    [[ $output == *"build paru-bin"* ]]
+    [ ! -s "$CALLS" ]
+
+    fake paru < /dev/null
+    run "$BOOTSTRAP" --modules m1 --dry-run
+    [ "$status" -eq 0 ]
+    [[ $output != *"build paru-bin"* ]]
+}

@@ -34,7 +34,8 @@ and `system/` are ignored by stow.
 ./bootstrap.sh --dry-run             # print the plan, run nothing
 ```
 
-Packages are installed in one `pacman` call and one `paru` call, then each
+Packages are installed in one `pacman` call and one `paru` call (building
+`paru-bin` from the AUR first if paru is missing), then each
 `install.sh` runs, then modules are stowed, then each `post-install.sh` runs
 (in module order). Conflicts with real files abort before anything is linked.
 

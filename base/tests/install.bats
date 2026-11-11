@@ -13,23 +13,15 @@ setup() {
     fake makepkg < /dev/null
 }
 
-@test "skips paru build when paru exists" {
-    fake paru < /dev/null
+@test "leaves paru to bootstrap.sh" {
     run "$INSTALL"
     [ "$status" -eq 0 ]
     [ -z "$(calls git)" ]
     [ -z "$(calls makepkg)" ]
-}
-
-@test "builds paru-bin from the AUR when paru is missing" {
-    run "$INSTALL"
-    [ "$status" -eq 0 ]
-    [[ "$(calls git)" == "git clone https://aur.archlinux.org/paru-bin.git "* ]]
-    [ "$(calls makepkg)" = "makepkg -si --noconfirm" ]
+    [ -z "$(grep -n 'paru-bin\|makepkg' "$INSTALL" || true)" ]
 }
 
 @test "installs system files under / with sudo install -Dm644" {
-    fake paru < /dev/null
     run "$INSTALL"
     [ "$status" -eq 0 ]
     [ "$(calls sudo)" = "sudo install -Dm644 $REPO_ROOT/base/system/etc/xdg/reflector/reflector.conf /etc/xdg/reflector/reflector.conf" ]

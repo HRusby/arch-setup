@@ -31,6 +31,20 @@ entries() {
     sed -e 's/#.*//' -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' "$1" | grep -v '^$' || true
 }
 
+# need_paru — true when AUR packages are wanted and paru is not installed yet.
+need_paru() {
+    (( ${#aur_pkgs[@]} )) && ! command -v paru > /dev/null
+}
+
+# build_paru — build and install paru-bin from the AUR (needs base-devel, git).
+build_paru() (
+    tmp=$(mktemp -d)
+    trap 'rm -rf "$tmp"' EXIT
+    git clone https://aur.archlinux.org/paru-bin.git "$tmp/paru-bin"
+    cd "$tmp/paru-bin"
+    makepkg -si --noconfirm
+)
+
 while (( $# )); do
     case "$1" in
         --modules) [[ $# -ge 2 ]] || die "--modules needs a value"
@@ -67,6 +81,7 @@ stow_args=(--dir="$REPO" --target="$HOME" --no-folding "${STOW_IGNORES[@]}")
 if (( dry )); then
     echo "modules: ${modules[*]}"
     (( ${#repo_pkgs[@]} )) && echo "pacman: ${repo_pkgs[*]}"
+    if need_paru; then echo "build paru-bin: paru is not installed"; fi
     (( ${#aur_pkgs[@]} )) && echo "paru: ${aur_pkgs[*]}"
     for m in "${modules[@]}"; do
         [[ -x $REPO/$m/install.sh ]] && echo "install: $m/install.sh"
@@ -79,6 +94,10 @@ if (( dry )); then
 fi
 
 (( ${#repo_pkgs[@]} )) && sudo pacman -S --needed --noconfirm "${repo_pkgs[@]}"
+if need_paru; then
+    build_paru
+    command -v paru > /dev/null || die "paru is still missing after building paru-bin"
+fi
 (( ${#aur_pkgs[@]} )) && paru -S --needed --noconfirm "${aur_pkgs[@]}"
 
 for m in "${modules[@]}"; do
