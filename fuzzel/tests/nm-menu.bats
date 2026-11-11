@@ -7,6 +7,7 @@ setup() {
 case "$*" in
     "-t -f IN-USE,SSID,SECURITY,SIGNAL dev wifi list")
         printf '%s\n' '*:Home:WPA2:80' ' :Cafe:WPA2:60' ' :Library:--:50' ' :Neighbour\:5G:WPA3:40' ;;
+    "--ask device wifi connect"*) cat > "$FAKE_DIR/nmcli.stdin"; exit 0 ;;
     "-t -f NAME connection show") printf '%s\n' Home Cafe 'Wired connection 1' ;;
     "-t -f TYPE,STATE,DEVICE device status") printf '%s\n' 'ethernet:connected:enp3s0' 'wifi:connected:wlan0' ;;
 esac
@@ -48,7 +49,9 @@ FAKE
     run "$NM_MENU"
     [ "$status" -eq 0 ]
     [ -n "$(calls fuzzel | grep -- '--password')" ]
-    [ "$(calls nmcli | tail -n1)" = "nmcli device wifi connect Neighbour:5G password hunter2" ]
+    [ "$(calls nmcli | tail -n1)" = "nmcli --ask device wifi connect Neighbour:5G" ]
+    [ "$(cat "$FAKE_DIR/nmcli.stdin")" = hunter2 ]
+    ! grep -q hunter2 "$CALLS"
 }
 
 @test "escape at the password prompt connects nothing" {

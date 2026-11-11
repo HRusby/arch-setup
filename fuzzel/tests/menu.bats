@@ -87,7 +87,7 @@ setup() {
     run "$MENU" reminder
     [ "$status" -eq 0 ]
     [ "$(calls fuzzel | wc -l)" -eq 2 ]
-    calls fuzzel | head -n1 | grep -q 'Remind in'
+    calls fuzzel | head -n1 | grep -q -- '--prompt-only Remind in'
     calls fuzzel | tail -n1 | grep -q 'Message'
     [ "$(calls uwsm-app)" = "uwsm-app -- remind 15 stand up and stretch" ]
 }

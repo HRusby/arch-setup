@@ -23,7 +23,7 @@ pick() {
 # ask <prompt> — read free text with no list; fails on Escape or empty input.
 ask() {
     local text
-    text=$(fuzzel --dmenu --prompt "$1" --lines 0 < /dev/null) || return 1
+    text=$(fuzzel --dmenu --prompt-only "$1") || return 1
     [[ -n $text ]] || return 1
     printf '%s\n' "$text"
 }

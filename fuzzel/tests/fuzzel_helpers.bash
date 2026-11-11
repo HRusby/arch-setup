@@ -17,7 +17,12 @@ fuzzel_sandbox() {
     # Fake fuzzel: appends its stdin (plus a "--" separator) to $FUZZEL_IN and
     # prints the next queued pick. An empty queue acts like Escape (exit 1).
     fake fuzzel <<'FAKE'
-{ cat; echo '--'; } >> "$FUZZEL_IN"
+# Read the list from stdin only in --dmenu mode with a list: app mode and
+# --prompt-only never read it, and must not block on an open tty or pipe.
+if [[ " $* " == *" --dmenu "* && " $* " != *" --prompt-only "* ]]; then
+    cat >> "$FUZZEL_IN"
+fi
+echo '--' >> "$FUZZEL_IN"
 [[ " $* " == *" --dmenu "* ]] || exit 0
 [[ -s $PICKS ]] || exit 1
 pick=$(head -n1 "$PICKS")

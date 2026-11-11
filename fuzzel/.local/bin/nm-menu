@@ -66,9 +66,10 @@ connect() {
     if nmcli -t -f NAME connection show | grep -qxF -- "$ssid"; then
         nmcli connection up id "$ssid" || notify-send "Network" "Could not connect to $ssid"
     elif [[ -n $is_secured ]]; then
-        pw=$(fuzzel --dmenu --password --prompt "Password for $ssid: " --lines 0 < /dev/null) || exit 0
+        pw=$(fuzzel --dmenu --password --prompt-only "Password for $ssid: ") || exit 0
         [[ -n $pw ]] || exit 0
-        nmcli device wifi connect "$ssid" password "$pw" || notify-send "Network" "Could not connect to $ssid"
+        # --ask reads the password from stdin, keeping it out of argv (and `ps`).
+        printf '%s\n' "$pw" | nmcli --ask device wifi connect "$ssid" || notify-send "Network" "Could not connect to $ssid"
     else
         nmcli device wifi connect "$ssid" || notify-send "Network" "Could not connect to $ssid"
     fi
