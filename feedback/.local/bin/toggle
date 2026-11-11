@@ -1,0 +1,87 @@
+#!/usr/bin/env bash
+# Flip or query a desktop feature. State always comes from the live system.
+# Usage: toggle <nightlight|dnd|idle> [on|off|status]   (default: flip)
+set -euo pipefail
+
+ON_TEMP=4000
+OFF_TEMP=6500
+# hyprsunset reports 6000 K when it applies no tint (identity profile), so only
+# a temperature below that means the night light is on. Gamma is left alone:
+# hypridle dims the screen with it.
+NEUTRAL_TEMP=6000
+
+die() {
+    echo "toggle: $*" >&2
+    exit "${2:-1}"
+}
+
+dnd_state() {
+    if makoctl mode 2> /dev/null | grep -q 'do-not-disturb'; then echo on; else echo off; fi
+}
+
+nightlight_state() {
+    local temp
+    temp=$(hyprctl hyprsunset temperature 2> /dev/null | grep -oE '[0-9]+' | head -n1 || true)
+    if [[ -n $temp ]] && ((temp < NEUTRAL_TEMP)); then echo on; else echo off; fi
+}
+
+idle_state() {
+    if pgrep -x hypridle > /dev/null 2>&1; then echo on; else echo off; fi
+}
+
+# apply_<toggle> <on|off> — change the system; print the confirmation, if any.
+apply_dnd() {
+    makoctl mode -t do-not-disturb
+    # Turning it on silences notifications, so confirm only turning it off.
+    [[ $1 == off ]] && echo "Notifications on"
+    return 0
+}
+
+apply_nightlight() {
+    if [[ $1 == on ]]; then
+        hyprctl hyprsunset temperature "$ON_TEMP" > /dev/null
+        echo "Night light on"
+    else
+        hyprctl hyprsunset temperature "$OFF_TEMP" > /dev/null
+        echo "Night light off"
+    fi
+}
+
+apply_idle() {
+    if [[ $1 == on ]]; then
+        uwsm-app -- hypridle > /dev/null 2>&1
+    else
+        pkill -x hypridle || true
+    fi
+    echo "Idle lock $1"
+}
+
+main() {
+    local name=${1:-} action=${2:-flip} current target msg
+    case $name in
+        nightlight | dnd | idle) ;;
+        *) die "unknown toggle: ${name:-<none>} (use nightlight, dnd or idle)" 2 ;;
+    esac
+    [[ $action =~ ^(on|off|status|flip)$ ]] || die "unknown action: $action (use on, off or status)" 2
+
+    current=$("${name}_state")
+    if [[ $action == status ]]; then
+        echo "$current"
+        return 0
+    fi
+
+    if [[ $action == flip ]]; then
+        [[ $current == on ]] && target=off || target=on
+    else
+        target=$action
+    fi
+    [[ $target == "$current" ]] && return 0
+
+    msg=$("apply_$name" "$target")
+    pkill -RTMIN+8 waybar || true
+    if [[ -n $msg ]]; then
+        notify-send -t 2000 "$msg" || true
+    fi
+}
+
+main "$@"

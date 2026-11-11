@@ -1,0 +1,4 @@
+mako
+swayosd
+libnotify
+playerctl

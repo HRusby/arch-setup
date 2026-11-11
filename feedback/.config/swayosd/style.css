@@ -1,0 +1,43 @@
+/* Colours are @define-color names from the theme engine's colors.css. */
+@import url("../theme/generated/colors.css");
+
+window#osd {
+  padding: 12px 20px;
+  border-radius: 6px;
+  border: 2px solid @accent;
+  background: @bg;
+}
+
+window#osd #container {
+  margin: 12px;
+}
+
+window#osd image,
+window#osd label {
+  color: @fg;
+}
+
+window#osd progressbar:disabled,
+window#osd image:disabled {
+  opacity: 0.5;
+}
+
+window#osd progressbar {
+  min-height: 6px;
+  border-radius: 6px;
+  background: transparent;
+}
+
+window#osd trough {
+  min-height: inherit;
+  border-radius: inherit;
+  border: none;
+  background: @bg2;
+}
+
+window#osd progress {
+  min-height: inherit;
+  border-radius: inherit;
+  border: none;
+  background: @accent;
+}
