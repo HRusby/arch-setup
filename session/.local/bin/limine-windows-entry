@@ -2,11 +2,16 @@
 # Add a "/Windows" entry to limine.conf that chainloads Windows Boot Manager
 # from an EFI system partition on another disk. Run as root.
 #
-# Only vfat partitions on disks other than the one holding / are looked at,
-# each mounted read-only on a temporary directory and unmounted again: no
-# other disk is ever written. The first one holding
-# EFI/Microsoft/Boot/bootmgfw.efi wins. Re-running replaces the entry; when no
-# Windows is found nothing is changed.
+# Usage: limine-windows-entry [--partuuid <uuid>]
+#
+# Only EFI system partitions (vfat, ESP partition type) on internal disks other
+# than the one holding / are looked at: removable, hotplug and USB disks are
+# skipped, so no entry is written for a stick that won't be there next boot.
+# Each is mounted read-only (ro,nosuid,nodev,noexec) on a temporary directory
+# and unmounted again: no other disk is ever written. Exactly one of them must
+# hold EFI/Microsoft/Boot/bootmgfw.efi; with several, nothing is written and
+# they are listed, so one can be picked with --partuuid. Re-running replaces
+# the entry; when no Windows is found nothing is changed.
 #
 # Environment (mostly for tests):
 #   LIMINE_CONF      config to edit (default: $ESP_PATH/limine.conf, else the
@@ -17,6 +22,7 @@
 set -euo pipefail
 
 LOADER=EFI/Microsoft/Boot/bootmgfw.efi
+ESP_TYPE=c12a7328-f81f-11d2-ba4b-00a0c93ec93b
 defaults=${LIMINE_DEFAULTS:-/etc/default/limine}
 mutex=${LIMINE_MUTEX:-/usr/lib/limine/limine-mutex}
 
@@ -28,6 +34,17 @@ die() {
 warn() {
     echo "limine-windows-entry: $*" >&2
 }
+
+want=""
+while (( $# )); do
+    case $1 in
+        --partuuid)
+            [[ ${2:-} =~ ^[0-9a-fA-F-]{36}$ ]] || die "--partuuid needs a partition UUID"
+            want=${2,,}
+            shift 2 ;;
+        *) die "usage: limine-windows-entry [--partuuid <uuid>]" ;;
+    esac
+done
 
 [[ -n ${LIMINE_WINDOWS_ENTRY_NO_ROOT_CHECK:-} ]] || (( EUID == 0 )) || die "must be run as root"
 
@@ -83,35 +100,69 @@ cleanup() {
 }
 trap cleanup EXIT
 
-partuuid=""
-while read -r line; do
+mapfile -t rows < <(lsblk -Pnpo NAME,TYPE,FSTYPE,PARTUUID,PARTTYPE,PKNAME,MOUNTPOINT,RM,HOTPLUG,TRAN)
+
+# Whole disks that are removable, hotplug or USB (TRAN is only set on the disk).
+declare -A unfixed=()
+for line in "${rows[@]}"; do
+    [[ $(field TYPE "$line") == disk ]] || continue
+    if [[ $(field RM "$line") == 1 || $(field HOTPLUG "$line") == 1 || $(field TRAN "$line") == usb ]]; then
+        unfixed[$(field NAME "$line")]=1
+    fi
+done
+
+found=()    # "<dev> <partuuid>" of every candidate holding the Windows loader
+for line in "${rows[@]}"; do
     dev=$(field NAME "$line")
     disk=$(field PKNAME "$line")
     uuid=$(field PARTUUID "$line")
+    ptype=$(field PARTTYPE "$line")
     [[ $(field TYPE "$line") == part && $(field FSTYPE "$line") == vfat && -n $uuid ]] || continue
+    [[ ${ptype,,} == "$ESP_TYPE" ]] || continue
     [[ " ${roots[*]} " == *" $disk "* ]] && continue
+    if [[ -n ${unfixed[$disk]:-} || $(field RM "$line") == 1 || $(field HOTPLUG "$line") == 1 ]]; then
+        echo "limine-windows-entry: skipping $dev on removable/USB disk $disk"
+        continue
+    fi
 
     where=$(field MOUNTPOINT "$line")
     if [[ -z $where ]]; then
-        mount -o ro -t vfat "$dev" "$mnt" || { warn "could not mount $dev read-only; skipped"; continue; }
+        mount -o ro,nosuid,nodev,noexec -t vfat "$dev" "$mnt" || { warn "could not mount $dev read-only; skipped"; continue; }
         mounted=1
         where=$mnt
     fi
-    [[ -f $where/$LOADER ]] && partuuid=$uuid
+    if [[ -f $where/$LOADER ]]; then
+        found+=("$dev ${uuid,,}")
+    fi
     if (( mounted )); then
         umount "$mnt"
         mounted=0
     fi
-    if [[ -n $partuuid ]]; then
-        echo "limine-windows-entry: Windows Boot Manager found on $dev"
-        break
+done
+
+partuuid=""
+if [[ -n $want ]]; then
+    for f in "${found[@]}"; do
+        [[ ${f#* } == "$want" ]] && partuuid=$want
+    done
+    if [[ -z $partuuid ]]; then
+        die "--partuuid $want is not an internal ESP holding Windows Boot Manager (found: ${found[*]:-none})"
     fi
-done < <(lsblk -Pnpo NAME,TYPE,FSTYPE,PARTUUID,PKNAME,MOUNTPOINT)
+elif (( ${#found[@]} > 1 )); then
+    warn "Windows Boot Manager found on several partitions; nothing written:"
+    for f in "${found[@]}"; do
+        echo "  ${f%% *}  PARTUUID=${f#* }" >&2
+    done
+    die "pick one with: limine-windows-entry --partuuid <uuid>"
+elif (( ${#found[@]} == 1 )); then
+    partuuid=${found[0]#* }
+fi
 
 if [[ -z $partuuid ]]; then
     echo "limine-windows-entry: no Windows found on other disks; limine.conf unchanged"
     exit 0
 fi
+echo "limine-windows-entry: using Windows Boot Manager on PARTUUID $partuuid"
 
 conf=$(find_conf)
 [[ -f $conf ]] || die "$conf does not exist"
@@ -147,6 +198,7 @@ mv -f "$tmp" "$conf"
 echo "limine-windows-entry: wrote /Windows entry to $conf"
 
 # Re-enroll the config hash if the system enrolls one (no-op otherwise).
+# Never fatal: the new config is already in place.
 if command -v limine-enroll-config > /dev/null; then
-    limine-enroll-config
+    limine-enroll-config || warn "limine-enroll-config failed; run it by hand if you enroll the config hash"
 fi

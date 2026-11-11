@@ -1,14 +1,17 @@
 #!/usr/bin/env bash
 # Login and boot setup: tty1 autologin, console keymap, Plymouth, snapper
-# snapshots in Limine, a Limine Windows entry, network/bluetooth services and
-# the default theme. Runs before the session module is stowed; safe to re-run.
-# SKEL_BASH_PROFILE, SNAPPER_ROOT_CONFIG and THEME_SET override paths (tests).
+# snapshots in Limine, a Limine Windows entry and network/bluetooth services.
+# Runs before the session module is stowed; safe to re-run. The theme is set
+# by post-install.sh, once every module is stowed.
+# SKEL_BASH_PROFILE, SNAPPER_ROOT_CONFIG, PROC_CMDLINE and KERNEL_CMDLINE_FILE
+# override paths (tests).
 set -euo pipefail
 
 here=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 skel_bash_profile=${SKEL_BASH_PROFILE:-/etc/skel/.bash_profile}
 snapper_root_config=${SNAPPER_ROOT_CONFIG:-/etc/snapper/configs/root}
-theme_set=${THEME_SET:-$HOME/.local/bin/theme-set}
+proc_cmdline=${PROC_CMDLINE:-/proc/cmdline}
+kernel_cmdline=${KERNEL_CMDLINE_FILE:-/etc/kernel/cmdline}
 user=${USER:-}
 
 die() {
@@ -30,6 +33,7 @@ if [[ -f $HOME/.bash_profile && ! -L $HOME/.bash_profile ]]; then
 fi
 
 # System files (session/system/** -> /), with the autologin user filled in.
+# Includes the mkinitcpio drop-ins that add the plymouth and btrfs-overlayfs hooks.
 tmp=$(mktemp)
 trap 'rm -f "$tmp"' EXIT
 while read -r file; do
@@ -37,21 +41,55 @@ while read -r file; do
     sudo install -Dm644 "$tmp" "/${file#"$here/system/"}"
 done < <(find "$here/system" -type f | sort)
 
-# Plymouth: the mkinitcpio.conf.d drop-in above adds the hook; rebuild with it.
-sudo mkinitcpio -P
+# limine-entry-tool takes the kernel cmdline from /etc/kernel/cmdline, else
+# /proc/cmdline. Pin the one this system booted with (plus the Plymouth
+# splash), so a kernel update made while booted into a snapshot can't write
+# the snapshot's cmdline into the normal entries.
+if [[ ! -e $kernel_cmdline ]]; then
+    cmdline=$(< "$proc_cmdline")
+    if [[ $cmdline == *.snapshots* ]]; then
+        echo "session: booted from a snapshot; not pinning $kernel_cmdline" >&2
+    else
+        for word in quiet splash; do
+            [[ " $cmdline " == *" $word "* ]] || cmdline+=" $word"
+        done
+        printf '%s\n' "$cmdline" > "$tmp"
+        sudo install -Dm644 "$tmp" "$kernel_cmdline"
+    fi
+fi
+
+# Rebuild the initramfs with the new hooks and regenerate the Limine entries.
+sudo limine-update
+
+# create_snapper_config — snapper creates /.snapshots as a nested subvolume
+# and fails if it already exists. archinstall may mount an @.snapshots
+# subvolume there: move it aside, let snapper write its config, drop the
+# nested subvolume snapper made and remount @.snapshots from fstab.
+create_snapper_config() {
+    if ! findmnt -n --mountpoint /.snapshots > /dev/null; then
+        sudo snapper -c root create-config / || die "snapper could not create the root config"
+        return 0
+    fi
+    findmnt -n --fstab --mountpoint /.snapshots > /dev/null ||
+        die "/.snapshots is mounted but not listed in fstab; set up snapper by hand"
+    sudo umount /.snapshots
+    if ! { sudo rmdir /.snapshots && sudo snapper -c root create-config /; }; then
+        sudo mkdir -p /.snapshots
+        sudo mount /.snapshots
+        die "snapper could not create the root config; /.snapshots remounted"
+    fi
+    { sudo btrfs subvolume delete /.snapshots && sudo mkdir /.snapshots &&
+        sudo mount /.snapshots && sudo chmod 750 /.snapshots; } ||
+        die "snapper config created, but remounting @.snapshots failed; fix /.snapshots by hand"
+}
 
 if [[ ! -e $snapper_root_config ]]; then
-    sudo snapper -c root create-config / ||
-        die "snapper could not create the root config (does /.snapshots already exist?)"
+    create_snapper_config
 fi
 sudo systemctl enable limine-snapper-sync.service snapper-cleanup.timer
 
-sudo "$here/.local/bin/limine-windows-entry"
+# A missing Windows entry never makes the system unbootable: report and go on.
+sudo "$here/.local/bin/limine-windows-entry" ||
+    echo "session: limine-windows-entry failed (see above); re-run: sudo limine-windows-entry [--partuuid <uuid>]" >&2
 
 sudo systemctl enable NetworkManager bluetooth
-
-if [[ -x $theme_set ]]; then
-    "$theme_set" gruvbox-dark
-else
-    echo "session: $theme_set not found yet; after bootstrap run: theme-set gruvbox-dark" >&2
-fi

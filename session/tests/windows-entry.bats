@@ -2,10 +2,16 @@ load ../../tests/helpers
 
 # Disks in every test:
 #   nvme0n1  root disk: p1 = this system's ESP (mounted at /boot), p2 = LUKS -> /dev/mapper/root
-#   sda      other disk: sda1 = vfat (Windows ESP when the fixture says so), sda2 = ntfs
-#   sdb      other disk: sdb1 = vfat data stick
+#   sda      internal: sda1 = ESP (Windows when the test says so), sda2 = ntfs
+#   sdb      internal: sdb1 = ESP
+#   sdc      USB disk (only TRAN=usb, on the disk, marks it): sdc1 = ESP
+#   sdd      internal: sdd1 = vfat with the basic data partition type, not an ESP
 # Fake mount "mounts" a partition by copying $FAKE_DIR/esp/<name>/ into the
 # mount point; fake umount empties it again. Nothing real is mounted.
+
+ESP_TYPE=c12a7328-f81f-11d2-ba4b-00a0c93ec93b
+DATA_TYPE=ebd0a0a2-b9e5-4433-87c0-68b6b72699c7
+RO_MOUNT="mount -o ro,nosuid,nodev,noexec -t vfat"
 
 setup() {
     sandbox
@@ -28,18 +34,23 @@ setup() {
 /dev/nvme0n1p2 part
 /dev/nvme0n1 disk
 EOF
+    # Like real lsblk, TRAN is only set on whole disks.
     cat > "$FAKE_DIR/lsblk-pairs" <<EOF
-NAME="/dev/nvme0n1" TYPE="disk" FSTYPE="" PARTUUID="" PKNAME="" MOUNTPOINT=""
-NAME="/dev/nvme0n1p1" TYPE="part" FSTYPE="vfat" PARTUUID="11111111-1111-1111-1111-111111111111" PKNAME="/dev/nvme0n1" MOUNTPOINT="$FAKE_DIR/esp/nvme0n1p1"
-NAME="/dev/nvme0n1p2" TYPE="part" FSTYPE="crypto_LUKS" PARTUUID="22222222-2222-2222-2222-222222222222" PKNAME="/dev/nvme0n1" MOUNTPOINT=""
-NAME="/dev/mapper/root" TYPE="crypt" FSTYPE="btrfs" PARTUUID="" PKNAME="/dev/nvme0n1p2" MOUNTPOINT="/"
-NAME="/dev/sda" TYPE="disk" FSTYPE="" PARTUUID="" PKNAME="" MOUNTPOINT=""
-NAME="/dev/sda1" TYPE="part" FSTYPE="vfat" PARTUUID="49c516e8-a6d5-4232-9da6-b5506efcb2dc" PKNAME="/dev/sda" MOUNTPOINT=""
-NAME="/dev/sda2" TYPE="part" FSTYPE="ntfs" PARTUUID="33333333-3333-3333-3333-333333333333" PKNAME="/dev/sda" MOUNTPOINT=""
-NAME="/dev/sdb" TYPE="disk" FSTYPE="" PARTUUID="" PKNAME="" MOUNTPOINT=""
-NAME="/dev/sdb1" TYPE="part" FSTYPE="vfat" PARTUUID="44444444-4444-4444-4444-444444444444" PKNAME="/dev/sdb" MOUNTPOINT=""
+NAME="/dev/nvme0n1" TYPE="disk" FSTYPE="" PARTUUID="" PARTTYPE="" PKNAME="" MOUNTPOINT="" RM="0" HOTPLUG="0" TRAN="nvme"
+NAME="/dev/nvme0n1p1" TYPE="part" FSTYPE="vfat" PARTUUID="11111111-1111-1111-1111-111111111111" PARTTYPE="$ESP_TYPE" PKNAME="/dev/nvme0n1" MOUNTPOINT="$FAKE_DIR/esp/nvme0n1p1" RM="0" HOTPLUG="0" TRAN=""
+NAME="/dev/nvme0n1p2" TYPE="part" FSTYPE="crypto_LUKS" PARTUUID="22222222-2222-2222-2222-222222222222" PARTTYPE="4f68bce3-e8cd-4db1-96e7-fbcaf984b709" PKNAME="/dev/nvme0n1" MOUNTPOINT="" RM="0" HOTPLUG="0" TRAN=""
+NAME="/dev/mapper/root" TYPE="crypt" FSTYPE="btrfs" PARTUUID="" PARTTYPE="" PKNAME="/dev/nvme0n1p2" MOUNTPOINT="/" RM="0" HOTPLUG="0" TRAN=""
+NAME="/dev/sda" TYPE="disk" FSTYPE="" PARTUUID="" PARTTYPE="" PKNAME="" MOUNTPOINT="" RM="0" HOTPLUG="0" TRAN="sata"
+NAME="/dev/sda1" TYPE="part" FSTYPE="vfat" PARTUUID="49c516e8-a6d5-4232-9da6-b5506efcb2dc" PARTTYPE="$ESP_TYPE" PKNAME="/dev/sda" MOUNTPOINT="" RM="0" HOTPLUG="0" TRAN=""
+NAME="/dev/sda2" TYPE="part" FSTYPE="ntfs" PARTUUID="33333333-3333-3333-3333-333333333333" PARTTYPE="$DATA_TYPE" PKNAME="/dev/sda" MOUNTPOINT="" RM="0" HOTPLUG="0" TRAN=""
+NAME="/dev/sdb" TYPE="disk" FSTYPE="" PARTUUID="" PARTTYPE="" PKNAME="" MOUNTPOINT="" RM="0" HOTPLUG="0" TRAN="sata"
+NAME="/dev/sdb1" TYPE="part" FSTYPE="vfat" PARTUUID="44444444-4444-4444-4444-444444444444" PARTTYPE="$ESP_TYPE" PKNAME="/dev/sdb" MOUNTPOINT="" RM="0" HOTPLUG="0" TRAN=""
+NAME="/dev/sdc" TYPE="disk" FSTYPE="" PARTUUID="" PARTTYPE="" PKNAME="" MOUNTPOINT="" RM="0" HOTPLUG="0" TRAN="usb"
+NAME="/dev/sdc1" TYPE="part" FSTYPE="vfat" PARTUUID="55555555-5555-5555-5555-555555555555" PARTTYPE="$ESP_TYPE" PKNAME="/dev/sdc" MOUNTPOINT="" RM="0" HOTPLUG="0" TRAN=""
+NAME="/dev/sdd" TYPE="disk" FSTYPE="" PARTUUID="" PARTTYPE="" PKNAME="" MOUNTPOINT="" RM="0" HOTPLUG="0" TRAN="sata"
+NAME="/dev/sdd1" TYPE="part" FSTYPE="vfat" PARTUUID="66666666-6666-6666-6666-666666666666" PARTTYPE="$DATA_TYPE" PKNAME="/dev/sdd" MOUNTPOINT="" RM="0" HOTPLUG="0" TRAN=""
 EOF
-    mkdir -p "$FAKE_DIR/esp/nvme0n1p1/EFI/BOOT" "$FAKE_DIR/esp/sdb1/photos"
+    mkdir -p "$FAKE_DIR/esp/nvme0n1p1/EFI/BOOT" "$FAKE_DIR/esp/sdb1/EFI/BOOT"
 
     fake findmnt <<< 'echo "${FINDMNT_SOURCE-/dev/mapper/root}"'
     fake lsblk <<'EOF'
@@ -72,12 +83,12 @@ entry_count() {
     [ "$status" -eq 0 ] || { echo "$output"; false; }
     [ -n "$(calls mount)" ]
     while read -r line; do
-        [[ $line == "mount -o ro -t vfat "* ]] || { echo "not read-only: $line"; return 1; }
+        [[ $line == "$RO_MOUNT "* ]] || { echo "not read-only: $line"; return 1; }
         [[ $line != *nvme0n1* ]] || { echo "root disk mounted: $line"; return 1; }
     done < <(calls mount)
-    # Only vfat partitions: never the ntfs one.
-    [ "$(calls mount | sed 's/ [^ ]*$//')" = "mount -o ro -t vfat /dev/sda1
-mount -o ro -t vfat /dev/sdb1" ]
+    # Only internal ESPs: never the ntfs, USB or non-ESP vfat partitions.
+    [ "$(calls mount | sed 's/ [^ ]*$//')" = "$RO_MOUNT /dev/sda1
+$RO_MOUNT /dev/sdb1" ]
 }
 
 @test "unmounts every partition it mounted and removes the mount point" {
@@ -98,8 +109,6 @@ mount -o ro -t vfat /dev/sdb1" ]
     grep -qx 'path: guid(49c516e8-a6d5-4232-9da6-b5506efcb2dc):/EFI/Microsoft/Boot/bootmgfw.efi' "$LIMINE_CONF"
     # The existing config is kept as it was, ahead of the new entry.
     [ "$(sed -n '1,5p' "$LIMINE_CONF")" = "$(printf 'timeout: 3\n\n/Arch Linux\n    protocol: linux\n    path: boot():/vmlinuz-linux')" ]
-    # Found on the first candidate, so the second is never mounted.
-    [ -z "$(calls mount | grep sdb1)" ]
 }
 
 @test "re-run does not duplicate" {
@@ -143,10 +152,11 @@ mount -o ro -t vfat /dev/sdb1" ]
 
 @test "reads an already-mounted ESP in place instead of mounting it again" {
     windows_on sda1
-    sed -i "s|PARTUUID=\"49c516e8-a6d5-4232-9da6-b5506efcb2dc\" PKNAME=\"/dev/sda\" MOUNTPOINT=\"\"|PARTUUID=\"49c516e8-a6d5-4232-9da6-b5506efcb2dc\" PKNAME=\"/dev/sda\" MOUNTPOINT=\"$FAKE_DIR/esp/sda1\"|" "$FAKE_DIR/lsblk-pairs"
+    sed -i "s|^\(NAME=\"/dev/sda1\" .*\) MOUNTPOINT=\"\"|\1 MOUNTPOINT=\"$FAKE_DIR/esp/sda1\"|" "$FAKE_DIR/lsblk-pairs"
+    grep -q "^NAME=\"/dev/sda1\" .* MOUNTPOINT=\"$FAKE_DIR/esp/sda1\"" "$FAKE_DIR/lsblk-pairs"
     run "$ENTRY"
     [ "$status" -eq 0 ]
-    [ -z "$(calls mount)" ]
+    [ -z "$(calls mount | grep sda1 || true)" ]
     [ "$(entry_count)" = 1 ]
 }
 
@@ -183,4 +193,90 @@ mount -o ro -t vfat /dev/sdb1" ]
     [ "$(calls limine-enroll-config)" = "limine-enroll-config " ]
     run "$ENTRY"
     [ "$(calls limine-enroll-config | grep -c .)" = 1 ]
+}
+
+@test "skips an ESP on a USB disk" {
+    windows_on sdc1
+    cp "$LIMINE_CONF" "$FAKE_DIR/before"
+    run "$ENTRY"
+    [ "$status" -eq 0 ]
+    [ -z "$(calls mount | grep sdc || true)" ]
+    cmp "$FAKE_DIR/before" "$LIMINE_CONF"
+}
+
+@test "skips an ESP on a removable disk" {
+    windows_on sdb1
+    sed -i 's|^\(NAME="/dev/sdb" .*\) RM="0"|\1 RM="1"|' "$FAKE_DIR/lsblk-pairs"
+    grep -q '^NAME="/dev/sdb" .* RM="1"' "$FAKE_DIR/lsblk-pairs"
+    run "$ENTRY"
+    [ "$status" -eq 0 ]
+    [ -z "$(calls mount | grep sdb || true)" ]
+    [ "$(entry_count)" = 0 ]
+}
+
+@test "skips an ESP on a hotplug disk" {
+    windows_on sdb1
+    sed -i 's|^\(NAME="/dev/sdb" .*\) HOTPLUG="0"|\1 HOTPLUG="1"|' "$FAKE_DIR/lsblk-pairs"
+    grep -q '^NAME="/dev/sdb" .* HOTPLUG="1"' "$FAKE_DIR/lsblk-pairs"
+    run "$ENTRY"
+    [ "$status" -eq 0 ]
+    [ -z "$(calls mount | grep sdb || true)" ]
+    [ "$(entry_count)" = 0 ]
+}
+
+@test "skips a vfat partition that is not an EFI system partition" {
+    windows_on sdd1
+    cp "$LIMINE_CONF" "$FAKE_DIR/before"
+    run "$ENTRY"
+    [ "$status" -eq 0 ]
+    [ -z "$(calls mount | grep sdd || true)" ]
+    cmp "$FAKE_DIR/before" "$LIMINE_CONF"
+}
+
+@test "two Windows candidates: writes nothing and lists them" {
+    windows_on sda1
+    windows_on sdb1
+    cp "$LIMINE_CONF" "$FAKE_DIR/before"
+    run "$ENTRY"
+    [ "$status" -ne 0 ]
+    cmp "$FAKE_DIR/before" "$LIMINE_CONF"
+    [[ $output == *"/dev/sda1  PARTUUID=49c516e8-a6d5-4232-9da6-b5506efcb2dc"* ]]
+    [[ $output == *"/dev/sdb1  PARTUUID=44444444-4444-4444-4444-444444444444"* ]]
+    [[ $output == *"--partuuid"* ]]
+    [ "$(calls mount | grep -c .)" = "$(calls umount | grep -c .)" ]
+}
+
+@test "--partuuid picks one of several candidates" {
+    windows_on sda1
+    windows_on sdb1
+    run "$ENTRY" --partuuid 44444444-4444-4444-4444-444444444444
+    [ "$status" -eq 0 ] || { echo "$output"; false; }
+    [ "$(entry_count)" = 1 ]
+    grep -qx 'path: guid(44444444-4444-4444-4444-444444444444):/EFI/Microsoft/Boot/bootmgfw.efi' "$LIMINE_CONF"
+}
+
+@test "--partuuid must name a Windows candidate" {
+    windows_on sda1
+    windows_on sdc1
+    cp "$LIMINE_CONF" "$FAKE_DIR/before"
+    for uuid in 44444444-4444-4444-4444-444444444444 55555555-5555-5555-5555-555555555555 11111111-1111-1111-1111-111111111111; do
+        run "$ENTRY" --partuuid "$uuid"
+        [ "$status" -ne 0 ] || { echo "accepted $uuid"; false; }
+        cmp "$FAKE_DIR/before" "$LIMINE_CONF"
+    done
+}
+
+@test "rejects unknown arguments" {
+    run "$ENTRY" --bogus
+    [ "$status" -ne 0 ]
+    [ -z "$(calls mount)" ]
+}
+
+@test "a failing limine-enroll-config is reported, not fatal" {
+    windows_on sda1
+    fake limine-enroll-config <<< 'exit 1'
+    run "$ENTRY"
+    [ "$status" -eq 0 ]
+    [[ $output == *"limine-enroll-config failed"* ]]
+    [ "$(entry_count)" = 1 ]
 }

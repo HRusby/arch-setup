@@ -10,6 +10,7 @@ STOW_IGNORES=(
     --ignore='^/packages\.txt$'
     --ignore='^/packages\.aur\.txt$'
     --ignore='^/install\.sh$'
+    --ignore='^/post-install\.sh$'
     --ignore='^/tests$'
     --ignore='^/system$'
 )
@@ -71,6 +72,9 @@ if (( dry )); then
         [[ -x $REPO/$m/install.sh ]] && echo "install: $m/install.sh"
     done
     for m in "${modules[@]}"; do echo "stow: $m"; done
+    for m in "${modules[@]}"; do
+        [[ -x $REPO/$m/post-install.sh ]] && echo "post-install: $m/post-install.sh"
+    done
     exit 0
 fi
 
@@ -101,4 +105,11 @@ fi
 
 for m in "${modules[@]}"; do
     stow "${stow_args[@]}" --restow "$m"
+done
+
+# Steps that need every module's files in place (e.g. theme-set from theme).
+for m in "${modules[@]}"; do
+    if [[ -x $REPO/$m/post-install.sh ]]; then
+        "$REPO/$m/post-install.sh"
+    fi
 done

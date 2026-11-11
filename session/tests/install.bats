@@ -22,6 +22,14 @@ EOF
     export SKEL_BASH_PROFILE="$FAKE_DIR/skel_bash_profile"
     export SNAPPER_ROOT_CONFIG="$FAKE_DIR/snapper-root"
     : > "$SNAPPER_ROOT_CONFIG"
+    export PROC_CMDLINE="$FAKE_DIR/proc-cmdline"
+    echo 'cryptdevice=PARTUUID=abcd:root root=/dev/mapper/root rootflags=subvol=@ rw rootfstype=btrfs' > "$PROC_CMDLINE"
+    export KERNEL_CMDLINE_FILE="$FAKE_DIR/kernel-cmdline"
+    # findmnt: /.snapshots mounted / listed in fstab only when the test says so.
+    fake findmnt <<'EOF2'
+[[ " $* " == *" --fstab "* ]] && exit "${SNAPSHOTS_IN_FSTAB:-1}"
+exit "${SNAPSHOTS_MOUNTED:-1}"
+EOF2
 }
 
 @test "substitutes the user into autologin" {
@@ -45,13 +53,15 @@ ExecStart=-/sbin/agetty -o '-p -f -- \\\\u' --noclear --autologin alice %I \$TER
     [ "$(cat "$FAKE_DIR/root/etc/vconsole.conf")" = "KEYMAP=uk" ]
     cmp "$REPO_ROOT/session/system/etc/mkinitcpio.conf.d/plymouth.conf" \
         "$FAKE_DIR/root/etc/mkinitcpio.conf.d/plymouth.conf"
+    cmp "$REPO_ROOT/session/system/etc/mkinitcpio.conf.d/btrfs-overlayfs.conf" \
+        "$FAKE_DIR/root/etc/mkinitcpio.conf.d/btrfs-overlayfs.conf"
 }
 
-@test "rebuilds the initramfs after installing system files" {
+@test "rebuilds the initramfs and boot entries after installing system files" {
     run "$INSTALL" < /dev/null
     [ "$status" -eq 0 ]
     last_install=$(grep -n '^sudo install ' "$CALLS" | sed -n '$s/:.*//p')
-    rebuild=$(grep -n '^sudo mkinitcpio -P$' "$CALLS" | sed 's/:.*//')
+    rebuild=$(grep -n '^sudo limine-update$' "$CALLS" | sed 's/:.*//')
     [ -n "$rebuild" ]
     [ "$rebuild" -gt "$last_install" ]
 }
@@ -67,6 +77,75 @@ ExecStart=-/sbin/agetty -o '-p -f -- \\\\u' --noclear --autologin alice %I \$TER
     run "$INSTALL" < /dev/null
     [ "$status" -eq 0 ]
     [ "$(grep "^sudo snapper " "$CALLS")" = "sudo snapper -c root create-config /" ]
+    [ -z "$(grep -E '^sudo (umount|btrfs)' "$CALLS" || true)" ]
+}
+
+@test "moves a mounted /.snapshots subvolume aside for snapper and remounts it" {
+    rm "$SNAPPER_ROOT_CONFIG"
+    SNAPSHOTS_MOUNTED=0 SNAPSHOTS_IN_FSTAB=0 run "$INSTALL" < /dev/null
+    [ "$status" -eq 0 ] || { echo "$output"; false; }
+    [ "$(grep -E '^sudo (umount|rmdir|snapper|btrfs|mkdir|mount|chmod) ' "$CALLS")" = "sudo umount /.snapshots
+sudo rmdir /.snapshots
+sudo snapper -c root create-config /
+sudo btrfs subvolume delete /.snapshots
+sudo mkdir /.snapshots
+sudo mount /.snapshots
+sudo chmod 750 /.snapshots" ]
+}
+
+@test "remounts /.snapshots when snapper fails, then stops" {
+    rm "$SNAPPER_ROOT_CONFIG"
+    fake sudo <<'EOF2'
+[[ $1 == snapper ]] && exit 1
+exit 0
+EOF2
+    SNAPSHOTS_MOUNTED=0 SNAPSHOTS_IN_FSTAB=0 run "$INSTALL" < /dev/null
+    [ "$status" -ne 0 ]
+    [ -z "$(grep '^sudo btrfs' "$CALLS" || true)" ]
+    [ "$(grep -E '^sudo (mkdir|mount) ' "$CALLS")" = "sudo mkdir -p /.snapshots
+sudo mount /.snapshots" ]
+    [ -z "$(grep '^sudo systemctl' "$CALLS" || true)" ]
+}
+
+@test "remounts /.snapshots when the empty mount point cannot be removed" {
+    rm "$SNAPPER_ROOT_CONFIG"
+    fake sudo <<'EOF2'
+[[ $1 == rmdir ]] && exit 1
+exit 0
+EOF2
+    SNAPSHOTS_MOUNTED=0 SNAPSHOTS_IN_FSTAB=0 run "$INSTALL" < /dev/null
+    [ "$status" -ne 0 ]
+    [ -z "$(grep '^sudo snapper' "$CALLS" || true)" ]
+    [ "$(grep -E '^sudo (mkdir|mount) ' "$CALLS")" = "sudo mkdir -p /.snapshots
+sudo mount /.snapshots" ]
+}
+
+@test "refuses to touch a mounted /.snapshots that fstab does not list" {
+    rm "$SNAPPER_ROOT_CONFIG"
+    SNAPSHOTS_MOUNTED=0 run "$INSTALL" < /dev/null
+    [ "$status" -ne 0 ]
+    [ -z "$(grep -E '^sudo (umount|snapper)' "$CALLS" || true)" ]
+}
+
+@test "pins the running kernel cmdline, with splash, for limine-entry-tool" {
+    run "$INSTALL" < /dev/null
+    [ "$status" -eq 0 ]
+    [ "$(cat "$FAKE_DIR/root$KERNEL_CMDLINE_FILE")" = "cryptdevice=PARTUUID=abcd:root root=/dev/mapper/root rootflags=subvol=@ rw rootfstype=btrfs quiet splash" ]
+}
+
+@test "keeps an existing kernel cmdline file" {
+    echo 'mine' > "$KERNEL_CMDLINE_FILE"
+    run "$INSTALL" < /dev/null
+    [ "$status" -eq 0 ]
+    [ ! -e "$FAKE_DIR/root$KERNEL_CMDLINE_FILE" ]
+}
+
+@test "does not pin a cmdline booted from a snapshot" {
+    echo 'root=/dev/mapper/root rootflags=subvol=/@/.snapshots/3/snapshot rw' > "$PROC_CMDLINE"
+    run "$INSTALL" < /dev/null
+    [ "$status" -eq 0 ]
+    [ ! -e "$FAKE_DIR/root$KERNEL_CMDLINE_FILE" ]
+    [[ $output == *snapshot* ]]
 }
 
 @test "removes untouched skel .bash_profile but keeps a modified one" {
@@ -103,19 +182,37 @@ ExecStart=-/sbin/agetty -o '-p -f -- \\\\u' --noclear --autologin alice %I \$TER
     grep -qx "sudo $REPO_ROOT/session/.local/bin/limine-windows-entry" "$CALLS"
 }
 
-@test "sets the default theme with theme-set" {
+@test "a failed limine-windows-entry is reported but does not stop the install" {
+    fake sudo <<'EOF2'
+[[ $1 == */limine-windows-entry ]] && exit 2
+exit 0
+EOF2
+    run "$INSTALL" < /dev/null
+    [ "$status" -eq 0 ]
+    [[ $output == *"limine-windows-entry"* ]]
+    grep -qx 'sudo systemctl enable NetworkManager bluetooth' "$CALLS"
+}
+
+@test "install.sh leaves the theme to post-install.sh" {
+    run "$INSTALL" < /dev/null
+    [ "$status" -eq 0 ]
+    [ -z "$(calls theme-set)" ]
+    [ -z "$(grep -n 'theme-set' "$INSTALL" || true)" ]
+}
+
+@test "post-install sets the default theme with the stowed theme-set" {
     mkdir -p "$HOME/.local/bin"
     printf '#!/bin/bash\necho "theme-set $*" >> "$CALLS"\n' > "$HOME/.local/bin/theme-set"
     chmod +x "$HOME/.local/bin/theme-set"
-    run "$INSTALL" < /dev/null
+    run "$REPO_ROOT/session/post-install.sh" < /dev/null
     [ "$status" -eq 0 ]
     [ "$(calls theme-set)" = "theme-set gruvbox-dark" ]
 }
 
-@test "tolerates a missing theme-set with a clear message" {
-    run "$INSTALL" < /dev/null
-    [ "$status" -eq 0 ]
-    [[ $output == *"theme-set gruvbox-dark"* ]]
+@test "post-install fails clearly when theme-set is missing" {
+    run "$REPO_ROOT/session/post-install.sh" < /dev/null
+    [ "$status" -ne 0 ]
+    [[ $output == *"theme-set"*"theme module"* ]]
 }
 
 @test "is idempotent: a second run succeeds and makes the same calls" {
@@ -132,6 +229,24 @@ ExecStart=-/sbin/agetty -o '-p -f -- \\\\u' --noclear --autologin alice %I \$TER
 hooks_after() {
     bash -c 'HOOKS=("$@"); . "$0"; . "$0"; echo "${HOOKS[*]}"' \
         "$REPO_ROOT/session/system/etc/mkinitcpio.conf.d/plymouth.conf" "$@"
+}
+
+# overlay_after <HOOKS...> — same for the btrfs-overlayfs drop-in.
+overlay_after() {
+    bash -c 'HOOKS=("$@"); . "$0"; . "$0"; echo "${HOOKS[*]}"' \
+        "$REPO_ROOT/session/system/etc/mkinitcpio.conf.d/btrfs-overlayfs.conf" "$@"
+}
+
+@test "btrfs-overlayfs hook goes right after filesystems, once" {
+    [ "$(overlay_after base udev plymouth block encrypt filesystems fsck)" = "base udev plymouth block encrypt filesystems btrfs-overlayfs fsck" ]
+}
+
+@test "systemd initramfs gets sd-btrfs-overlayfs instead" {
+    [ "$(overlay_after base systemd plymouth block sd-encrypt filesystems fsck)" = "base systemd plymouth block sd-encrypt filesystems sd-btrfs-overlayfs fsck" ]
+}
+
+@test "overlayfs drop-in leaves HOOKS that already have it alone" {
+    [ "$(overlay_after base udev filesystems btrfs-overlayfs fsck)" = "base udev filesystems btrfs-overlayfs fsck" ]
 }
 
 @test "plymouth hook goes right after udev, once" {
@@ -166,5 +281,5 @@ uwsm start hyprland.desktop" ]
 
 @test "packages are listed" {
     [ "$(tr '\n' ' ' < "$REPO_ROOT/session/packages.txt")" = "plymouth limine snapper snap-pac bluez bluez-utils " ]
-    [ "$(cat "$REPO_ROOT/session/packages.aur.txt")" = "limine-snapper-sync" ]
+    [ "$(tr '\n' ' ' < "$REPO_ROOT/session/packages.aur.txt")" = "limine-snapper-sync limine-mkinitcpio-hook " ]
 }

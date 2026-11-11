@@ -12,10 +12,11 @@ contents mirror `$HOME`, plus optional metadata that is never linked.
   packages.txt       # repo packages, one per line (# comments, blanks ok)
   packages.aur.txt   # AUR packages (installed with paru)
   install.sh         # optional, executable; runs before the module is stowed
+  post-install.sh    # optional, executable; runs after every module is stowed
 ```
 
-`packages.txt`, `packages.aur.txt`, `install.sh`, `tests/` and `system/` are
-ignored by stow.
+`packages.txt`, `packages.aur.txt`, `install.sh`, `post-install.sh`, `tests/`
+and `system/` are ignored by stow.
 
 ## Adding one
 
@@ -34,8 +35,8 @@ ignored by stow.
 ```
 
 Packages are installed in one `pacman` call and one `paru` call, then each
-`install.sh` runs, then modules are stowed. Conflicts with real files abort
-before anything is linked.
+`install.sh` runs, then modules are stowed, then each `post-install.sh` runs
+(in module order). Conflicts with real files abort before anything is linked.
 
 ## Tests
 

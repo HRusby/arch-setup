@@ -54,6 +54,28 @@ load helpers
     ! grep -q '^install m1' "$CALLS"
 }
 
+@test "runs post-install.sh after every module is stowed, in module order" {
+    module m1 a
+    module m2 b
+    post_install_script m1
+    post_install_script m2
+    run "$BOOTSTRAP" --modules m2,m1
+    [ "$status" -eq 0 ]
+    last_stow=$(grep -n '^stow ' "$CALLS" | grep -v -- ' --no ' | sed -n '$s/:.*//p')
+    first_post=$(grep -n '^post-install ' "$CALLS" | sed -n '1s/:.*//p')
+    [ "$first_post" -gt "$last_stow" ]
+    [ "$(grep '^post-install ' "$CALLS" | paste -sd,)" = "post-install m2,post-install m1" ]
+}
+
+@test "skips post-install.sh that is absent or not executable" {
+    module m1 a
+    module m2 b
+    printf '#!/usr/bin/env bash\necho "post-install m1" >> "$CALLS"\n' > "$REPO/m1/post-install.sh"
+    run "$BOOTSTRAP" --modules m1,m2
+    [ "$status" -eq 0 ]
+    [ -z "$(grep '^post-install ' "$CALLS" || true)" ]
+}
+
 @test "stows each module with target HOME" {
     module m1 a
     module m2 b
@@ -84,6 +106,7 @@ load helpers
     [ ! -e "$HOME/packages.txt" ]
     [ ! -e "$HOME/packages.aur.txt" ]
     [ ! -e "$HOME/install.sh" ]
+    [ ! -e "$HOME/post-install.sh" ]
     [ ! -e "$HOME/tests" ]
     [ ! -e "$HOME/system" ]
 }
@@ -134,8 +157,10 @@ load helpers
     module m1 a b
     printf '%s\n' x > "$REPO/m1/packages.aur.txt"
     install_script m1
+    post_install_script m1
     run "$BOOTSTRAP" --modules m1 --dry-run
     [ "$status" -eq 0 ]
+    [[ "$output" == *"post-install: m1/post-install.sh"* ]]
     [[ "$output" == *"a b"* ]]
     [[ "$output" == *"x"* ]]
     [[ "$output" == *"m1"* ]]

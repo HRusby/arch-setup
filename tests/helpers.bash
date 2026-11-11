@@ -79,7 +79,14 @@ conf_module() {
     echo "s" > "$REPO/$1/system/s.conf"
     echo "aur" > "$REPO/$1/packages.aur.txt"
     printf '#!/usr/bin/env bash\ntrue\n' > "$REPO/$1/install.sh"
-    chmod +x "$REPO/$1/install.sh"
+    printf '#!/usr/bin/env bash\ntrue\n' > "$REPO/$1/post-install.sh"
+    chmod +x "$REPO/$1/install.sh" "$REPO/$1/post-install.sh"
+}
+
+# post_install_script <module> — executable post-install.sh that logs "post-install <module>".
+post_install_script() {
+    printf '#!/usr/bin/env bash\necho "post-install %s" >> "$CALLS"\n' "$1" > "$REPO/$1/post-install.sh"
+    chmod +x "$REPO/$1/post-install.sh"
 }
 
 # calls <cmd> — logged calls for one fake.
